@@ -1,17 +1,15 @@
 use super::{Value, ValueArray};
-use num_enum::{IntoPrimitive, TryFromPrimitive};
 use std::{default::Default, fmt::Debug};
 
-#[derive(IntoPrimitive, Debug, Clone, Copy, TryFromPrimitive)]
-#[repr(u8)]
+#[derive(Debug, Clone, Copy)]
 pub enum OpCode {
-    OpConstant,
+    OpConstant(u8),
     OpReturn,
 }
 
 #[derive(Default)]
 pub struct Chunk {
-    code: Vec<u8>,
+    code: Vec<OpCode>,
     constants: ValueArray,
     lines: Vec<usize>,
 }
@@ -21,13 +19,13 @@ impl Chunk {
         Self::default()
     }
 
-    pub fn write<T: Into<u8>>(&mut self, byte: T, line: usize) {
-        self.code.push(byte.into());
+    pub fn write<T: Into<OpCode>>(&mut self, op_code: T, line: usize) {
+        self.code.push(op_code.into());
         self.lines.push(line);
     }
 
     #[inline]
-    pub fn code(&self) -> &[u8] {
+    pub fn code(&self) -> &[OpCode] {
         &self.code
     }
 
@@ -41,10 +39,15 @@ impl Chunk {
         &self.lines
     }
 
-    #[inline]
-    pub fn add_constant(&mut self, value: Value) -> u8 {
+    fn add_constant(&mut self, value: Value) -> usize {
         self.constants.write(value);
-        // If the no of constants is more than 255, this will overflow
-        (self.constants.values().len() - 1) as u8
+        self.constants.values().len() - 1
     }
+
+    pub fn write_constant(&mut self, value: Value, line: usize) -> usize {
+        let index = self.add_constant(value);
+        self.write(OpCode::OpConstant(index as u8), line);
+        index
+    }
+
 }

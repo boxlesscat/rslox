@@ -14,6 +14,7 @@ impl ValueArray {
         self.values.push(value);
     }
 
+    #[inline]
     pub fn values(&self) -> &[Value] {
         &self.values
     }
