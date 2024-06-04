@@ -3,8 +3,13 @@ use std::{default::Default, fmt::Debug};
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
+    OpAdd,
     OpConstant(u8),
+    OpDivide,
+    OpMultiply,
+    OpNegate,
     OpReturn,
+    OpSubtract,
 }
 
 #[derive(Default)]
@@ -49,5 +54,4 @@ impl Chunk {
         self.write(OpCode::OpConstant(index as u8), line);
         index
     }
-
 }

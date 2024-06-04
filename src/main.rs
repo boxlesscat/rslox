@@ -1,19 +1,21 @@
 use chunk::{Chunk, OpCode};
-use debug::Disassembler;
 use value::{Value, ValueArray};
+use vm::VM;
 
 pub mod chunk;
 pub mod debug;
 pub mod value;
+pub mod vm;
 
 fn main() {
     let mut chunk = Chunk::new();
-    chunk.write(OpCode::OpReturn, 1);
-    chunk.write_constant(1.1, 1);
-    chunk.write(OpCode::OpReturn, 2);
-    chunk.write_constant(2.2, 2);
-    chunk.write(OpCode::OpReturn, 3);
-    chunk.write_constant(3.3, 3);
-    let disassembler = Disassembler::new(&chunk);
-    disassembler.disassemble_chunk("test chunk");
+    chunk.write_constant(1.2, 123);
+    chunk.write_constant(3.4, 123);
+    chunk.write(OpCode::OpAdd, 123);
+    chunk.write_constant(5.6, 123);
+    chunk.write(OpCode::OpDivide, 123);
+    chunk.write(OpCode::OpNegate, 123);
+    chunk.write(OpCode::OpReturn, 123);
+    let mut vm = VM::new(&chunk);
+    vm.intepret();
 }
