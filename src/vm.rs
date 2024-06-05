@@ -1,28 +1,32 @@
-use crate::{chunk::Chunk, value::Value};
+use crate::chunk::Chunk;
+use crate::compiler::compile;
+use crate::value::Value;
 
-pub struct VM<'a> {
-    chunk: &'a Chunk,
+pub struct VM {
+    chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
 }
 
+#[derive(PartialEq)]
 pub enum InterpretResult {
-    InterpretOk,
-    InterpretCompileError,
-    InterpretRuntimeError,
+    Ok,
+    CompileError,
+    RuntimeError,
 }
 
-impl<'a> VM<'a> {
-    pub fn new(chunk: &'a Chunk) -> Self {
+impl VM {
+    pub fn new() -> Self {
         Self {
-            chunk,
+            chunk: Chunk::new(),
             ip: 0,
             stack: Vec::new(),
         }
     }
 
-    pub fn intepret(&mut self) -> InterpretResult {
-        self.run()
+    pub fn intepret(&mut self, source: &str) -> InterpretResult {
+        compile(&source);
+        return InterpretResult::Ok;
     }
 
     pub fn push(&mut self, value: Value) {
@@ -50,30 +54,30 @@ impl<'a> VM<'a> {
             let instruction = self.chunk.code()[self.ip];
             self.ip += 1;
             match instruction {
-                OpAdd => {
+                Add => {
                     let (a, b) = self.binary_op();
                     self.push(a + b);
                 }
-                OpConstant(constant_index) => {
+                Constant(constant_index) => {
                     self.push(self.chunk.constants().values()[constant_index as usize]);
                 }
-                OpDivide => {
+                Divide => {
                     let (a, b) = self.binary_op();
                     self.push(a / b);
                 }
-                OpMultiply => {
+                Multiply => {
                     let (a, b) = self.binary_op();
                     self.push(a * b);
                 }
-                OpNegate => {
+                Negate => {
                     let res = self.pop();
                     self.push(-res);
                 }
-                OpReturn => {
+                Return => {
                     println!("{}", self.pop());
-                    return InterpretOk;
+                    return Ok;
                 }
-                OpSubtract => {
+                Subtract => {
                     let (a, b) = self.binary_op();
                     self.push(a - b);
                 }

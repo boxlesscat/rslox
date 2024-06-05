@@ -1,4 +1,5 @@
-use super::{Chunk, OpCode};
+use crate::chunk::Chunk;
+use crate::chunk::OpCode;
 
 pub struct Disassembler<'a> {
     chunk: &'a Chunk,
@@ -27,15 +28,13 @@ impl<'a> Disassembler<'a> {
         }
         let instruction = self.chunk.code()[offset];
         match instruction {
-            OpAdd => self.simple_instruction("OP Add"),
-            OpConstant(constant_index) => {
-                self.constant_instruction("OP Constant", constant_index as usize)
-            }
-            OpDivide => self.simple_instruction("OP Divide"),
-            OpMultiply => self.simple_instruction("OP Multiply"),
-            OpNegate => self.simple_instruction("OP Negate"),
-            OpReturn => self.simple_instruction("OP Return"),
-            OpSubtract => self.simple_instruction("OP Subtract"),
+            Add => self.simple_instruction("OP Add"),
+            Constant(constant_index) => self.constant_instruction("OP Constant", constant_index as usize),
+            Divide => self.simple_instruction("OP Divide"),
+            Multiply => self.simple_instruction("OP Multiply"),
+            Negate => self.simple_instruction("OP Negate"),
+            Return => self.simple_instruction("OP Return"),
+            Subtract => self.simple_instruction("OP Subtract"),
         };
         offset + 1
     }

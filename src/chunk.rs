@@ -1,15 +1,16 @@
-use super::{Value, ValueArray};
+use crate::value::Value;
+use crate::value::ValueArray;
 use std::{default::Default, fmt::Debug};
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
-    OpAdd,
-    OpConstant(u8),
-    OpDivide,
-    OpMultiply,
-    OpNegate,
-    OpReturn,
-    OpSubtract,
+    Add,
+    Constant(u8),
+    Divide,
+    Multiply,
+    Negate,
+    Return,
+    Subtract,
 }
 
 #[derive(Default)]
@@ -51,7 +52,7 @@ impl Chunk {
 
     pub fn write_constant(&mut self, value: Value, line: usize) -> usize {
         let index = self.add_constant(value);
-        self.write(OpCode::OpConstant(index as u8), line);
+        self.write(OpCode::Constant(index as u8), line);
         index
     }
 }
