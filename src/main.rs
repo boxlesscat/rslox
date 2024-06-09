@@ -32,7 +32,7 @@ fn repl() {
         std::io::stdin()
             .read_line(&mut line)
             .expect("Failed to read line");
-        vm.intepret(&line);
+        vm.interpret(&line);
         line.clear();
     }
 }
@@ -41,7 +41,7 @@ fn run_file(path: &str) {
     use crate::vm::InterpretResult::*;
     let mut vm = VM::new();
     let source = std::fs::read_to_string(path).expect("Could not open file.");
-    let res = vm.intepret(&source);
+    let res = vm.interpret(&source);
     if res == CompileError {
         exit(65);
     } else if res == RuntimeError {

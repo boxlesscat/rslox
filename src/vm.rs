@@ -1,5 +1,5 @@
 use crate::chunk::Chunk;
-use crate::compiler::compile;
+use crate::compiler::Parser;
 use crate::value::Value;
 
 pub struct VM {
@@ -24,9 +24,15 @@ impl VM {
         }
     }
 
-    pub fn intepret(&mut self, source: &str) -> InterpretResult {
-        compile(&source);
-        return InterpretResult::Ok;
+    pub fn interpret(&mut self, source: &str) -> InterpretResult {
+        self.ip = 0;
+        let mut compiler = Parser::new(source);
+        let res = compiler.compile();
+        self.chunk = match res {
+            Ok(chunk) => chunk,
+            _ => return InterpretResult::CompileError,
+        };
+        return self.run();
     }
 
     pub fn push(&mut self, value: Value) {

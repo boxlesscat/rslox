@@ -45,7 +45,7 @@ impl Chunk {
         &self.lines
     }
 
-    fn add_constant(&mut self, value: Value) -> usize {
+    pub fn add_constant(&mut self, value: Value) -> usize {
         self.constants.write(value);
         self.constants.values().len() - 1
     }

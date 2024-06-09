@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Scanner<'a> {
     source: &'a str,
     start: usize,
@@ -6,7 +6,7 @@ pub struct Scanner<'a> {
     line: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TokenType {
     LeftParen,
     RightParen,
@@ -50,10 +50,21 @@ pub enum TokenType {
     EOF,
 }
 
+#[derive(Clone)]
 pub struct Token<'a> {
     pub token_type: TokenType,
     pub value: &'a str,
     pub line: usize,
+}
+
+impl<'a> Default for Token<'a> {
+    fn default() -> Self {
+        Token {
+            token_type: TokenType::EOF,
+            value: "",
+            line: 0,
+        }
+    }
 }
 
 impl<'a> Scanner<'a> {
@@ -66,7 +77,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Token {
+    pub fn scan_token(&mut self) -> Token<'a> {
         use TokenType::*;
         self.skip_whitespace();
         self.start = self.current;
@@ -179,7 +190,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Token<'a> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -192,7 +203,7 @@ impl<'a> Scanner<'a> {
         self.make_token(TokenType::Number)
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Token<'a> {
         while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
@@ -257,7 +268,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Token<'a> {
         while self.peek() != '"' && !self.is_at_end() {
             if self.peek() == '\n' {
                 self.line += 1;
@@ -275,7 +286,7 @@ impl<'a> Scanner<'a> {
         self.current == self.source.len()
     }
 
-    fn make_token(&self, token_type: TokenType) -> Token {
+    fn make_token(&self, token_type: TokenType) -> Token<'a> {
         Token {
             token_type,
             value: &self.source[self.start..self.current],
@@ -283,7 +294,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn error_token(&self, message: &'a str) -> Token {
+    fn error_token(&self, message: &'a str) -> Token<'a> {
         Token {
             token_type: TokenType::Error,
             value: &message,
