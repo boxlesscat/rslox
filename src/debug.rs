@@ -28,13 +28,23 @@ impl<'a> Disassembler<'a> {
         }
         let instruction = self.chunk.code()[offset];
         match instruction {
-            Add => self.simple_instruction("OP Add"),
+            Add             => self.simple_instruction("OP Add"),
+            Subtract        => self.simple_instruction("OP Subtract"),
+            Multiply        => self.simple_instruction("OP Multiply"),
+            Divide          => self.simple_instruction("OP Divide"),
+            
+            True            => self.simple_instruction("OP True"),
+            False           => self.simple_instruction("OP False"),
+            Nil             => self.simple_instruction("OP Nil"),
+            
+            Greater         => self.simple_instruction("OP Greater"),
+            Less            => self.simple_instruction("OP Less"),
+            Equal           => self.simple_instruction("OP Equal"),
+
             Constant(constant_index) => self.constant_instruction("OP Constant", constant_index as usize),
-            Divide => self.simple_instruction("OP Divide"),
-            Multiply => self.simple_instruction("OP Multiply"),
             Negate => self.simple_instruction("OP Negate"),
+            Not => self.simple_instruction("OP Not"),
             Return => self.simple_instruction("OP Return"),
-            Subtract => self.simple_instruction("OP Subtract"),
         };
         offset + 1
     }

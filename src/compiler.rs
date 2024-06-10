@@ -80,31 +80,31 @@ impl<'a> ParseRule<'a> {
             Semicolon       => Self::new(None,                      None,                       Precedence::None),
             Slash           => Self::new(None,                      Some(Parser::binary),       Precedence::Factor),
             Star            => Self::new(None,                      Some(Parser::binary),       Precedence::Factor),
-            Bang            => Self::new(None,                      None,                       Precedence::None),
-            BangEqual       => Self::new(None,                      None,                       Precedence::None),
+            Bang            => Self::new(Some(Parser::unary),       None,                       Precedence::None),
+            BangEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Equality),
             Equal           => Self::new(None,                      None,                       Precedence::None),
-            EqualEqual      => Self::new(None,                      None,                       Precedence::None),
-            Greater         => Self::new(None,                      None,                       Precedence::None),
-            GreaterEqual    => Self::new(None,                      None,                       Precedence::None),
-            Less            => Self::new(None,                      None,                       Precedence::None),
-            LessEqual       => Self::new(None,                      None,                       Precedence::None),
+            EqualEqual      => Self::new(None,                      Some(Parser::binary),       Precedence::Equality),
+            Greater         => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
+            GreaterEqual    => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
+            Less            => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
+            LessEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
             Idenitifier     => Self::new(None,                      None,                       Precedence::None),
             String          => Self::new(None,                      None,                       Precedence::None),
             Number          => Self::new(Some(Parser::number),      None,                       Precedence::None),
             And             => Self::new(None,                      None,                       Precedence::None),
             Class           => Self::new(None,                      None,                       Precedence::None),
             Else            => Self::new(None,                      None,                       Precedence::None),
-            False           => Self::new(None,                      None,                       Precedence::None),
+            False           => Self::new(Some(Parser::literal),     None,                       Precedence::None),
             For             => Self::new(None,                      None,                       Precedence::None),
             Fun             => Self::new(None,                      None,                       Precedence::None),
             If              => Self::new(None,                      None,                       Precedence::None),
-            Nil             => Self::new(None,                      None,                       Precedence::None),
+            Nil             => Self::new(Some(Parser::literal),     None,                       Precedence::None),
             Or              => Self::new(None,                      None,                       Precedence::None),
             Print           => Self::new(None,                      None,                       Precedence::None),
             Return          => Self::new(None,                      None,                       Precedence::None),
             Super           => Self::new(None,                      None,                       Precedence::None),
             This            => Self::new(None,                      None,                       Precedence::None),
-            True            => Self::new(None,                      None,                       Precedence::None),
+            True            => Self::new(Some(Parser::literal),     None,                       Precedence::None),
             Var             => Self::new(None,                      None,                       Precedence::None),
             While           => Self::new(None,                      None,                       Precedence::None),
             Error           => Self::new(None,                      None,                       Precedence::None),
@@ -180,6 +180,11 @@ impl<'a> Parser<'a> {
         self.compiler.chunk.write(op_code, self.previous.line);
     }
 
+    fn emit_bytes(&mut self, op_code1: OpCode, op_code2: OpCode) {
+        self.compiler.chunk.write(op_code1, self.previous.line);
+        self.compiler.chunk.write(op_code2, self.previous.line);
+    }
+
     fn end_compiler(&mut self) {
         self.emit_return();
         #[cfg(feature = "debug_print_code")]
@@ -212,10 +217,10 @@ impl<'a> Parser<'a> {
 
     fn unary(&mut self) {
         let operator_type = self.previous.token_type;
-        self.expression();
         self.parser_precendence(Precedence::Unary);
         match operator_type {
             TokenType::Minus => self.emit_byte(OpCode::Negate),
+            TokenType::Bang => self.emit_byte(OpCode::Not),
             _ => (),
         }
     }
@@ -224,13 +229,27 @@ impl<'a> Parser<'a> {
         let operator_type = self.previous.token_type;
         let rule = ParseRule::get_rule(operator_type);
         self.parser_precendence(rule.precedence + 1);
-        use OpCode::*;
         use TokenType::*;
         match operator_type {
-            Plus => self.emit_byte(Add),
-            Minus => self.emit_byte(Subtract),
-            Star => self.emit_byte(Multiply),
-            Slash => self.emit_byte(Divide),
+            BangEqual       => self.emit_bytes(OpCode::Equal, OpCode::Not),
+            EqualEqual      => self.emit_byte (OpCode::Equal),
+            Greater         => self.emit_byte (OpCode::Greater),
+            GreaterEqual    => self.emit_bytes(OpCode::Less, OpCode::Not),
+            Less            => self.emit_byte (OpCode::Less),
+            LessEqual       => self.emit_bytes(OpCode::Greater, OpCode::Not),
+            Plus            => self.emit_byte (OpCode::Add),
+            Minus           => self.emit_byte (OpCode::Subtract),
+            Star            => self.emit_byte (OpCode::Multiply),
+            Slash           => self.emit_byte (OpCode::Divide),
+            _               => (),
+        }
+    }
+
+    fn literal(&mut self) {
+        match self.previous.token_type {
+            TokenType::False => self.emit_byte(OpCode::False),
+            TokenType::Nil =>   self.emit_byte(OpCode::Nil),
+            TokenType::True =>  self.emit_byte(OpCode::True),
             _ => (),
         }
     }

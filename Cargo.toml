@@ -11,4 +11,4 @@ num_enum = "0.5.11"
 [features]
 debug_trace_execution = []
 debug_print_code = []
-default=["debug_trace_execution", "debug_print_code"]
+# default=["debug_trace_execution", "debug_print_code"]

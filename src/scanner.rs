@@ -50,7 +50,7 @@ pub enum TokenType {
     EOF,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Token<'a> {
     pub token_type: TokenType,
     pub value: &'a str,
@@ -260,13 +260,13 @@ impl<'a> Scanner<'a> {
         token_type: TokenType,
     ) -> TokenType {
         if self.current - self.start == start + len
-            && &self.source[self.start + start..self.current + len] == rest
+            && &self.source[self.start + start..self.start + start + len] == rest
         {
             token_type
         } else {
             TokenType::Idenitifier
         }
-    }
+}
 
     fn string(&mut self) -> Token<'a> {
         while self.peek() != '"' && !self.is_at_end() {

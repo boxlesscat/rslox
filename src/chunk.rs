@@ -6,10 +6,17 @@ pub enum OpCode {
     Add,
     Constant(u8),
     Divide,
+    Equal,
+    False,
+    Greater,
+    Less,
     Multiply,
     Negate,
+    Not,
+    Nil,
     Return,
     Subtract,
+    True,
 }
 
 #[derive(Default)]

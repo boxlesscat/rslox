@@ -43,7 +43,7 @@ impl VM {
         self.stack.pop().unwrap()
     }
 
-    fn peek(&mut self, distance: usize) -> &Value {
+    fn peek(&self, distance: usize) -> &Value {
         &self.stack[self.stack.len() - 1 - distance] 
     }
 
@@ -67,21 +67,51 @@ impl VM {
             }
             let instruction = self.chunk.code()[self.ip];
             self.ip += 1;
+            macro_rules! bin_op {
+                ($op: tt) => {
+                    if let (Value::Number(_), Value::Number(_)) = (self.peek(0), self.peek(1)) {
+                        let b = self.pop();
+                        let a = self.pop();
+                        self.push(a $op b);
+                    } else {
+                        self.runtime_error("Operands must be numbers");
+                        return RuntimeError;
+                    }
+                };
+            }
+            macro_rules! cmp_op {
+                ($op: tt) => {
+                    if let (Value::Number(_), Value::Number(_)) = (self.peek(0), self.peek(1)) {
+                        let b = self.pop();
+                        let a = self.pop();
+                        self.push(Value::Bool(a $op b));
+                    } else {
+                        self.runtime_error("Operands must be numbers");
+                        return RuntimeError;
+                    }
+                };
+            }
             match instruction {
-                Add => {
-                    let (a, b) = self.binary_op();
-                    self.push(a + b);
+                
+                Add         => bin_op!(+),
+                Subtract    => bin_op!(-),
+                Multiply    => bin_op!(*),
+                Divide      => bin_op!(/),
+                
+                True        => self.push(Value::Bool(true)),
+                False       => self.push(Value::Bool(false)),
+                Nil         => self.push(Value::Nil),
+                
+                Greater     => cmp_op!(>),
+                Less        => cmp_op!(<),
+                Equal       => {
+                    let b = self.pop();
+                    let a = self.pop();
+                    self.push(Value::Bool(a == b));
                 }
+
                 Constant(constant_index) => {
                     self.push(self.chunk.constants()[constant_index as usize].clone());
-                }
-                Divide => {
-                    let (a, b) = self.binary_op();
-                    self.push(a / b);
-                }
-                Multiply => {
-                    let (a, b) = self.binary_op();
-                    self.push(a * b);
                 }
                 Negate => {
                     if let Value::Number(_) = self.peek(0) {
@@ -92,15 +122,24 @@ impl VM {
                         return RuntimeError
                     }
                 }
+                Not => {
+                    let value = self.pop();
+                    let value = self.is_falsey(value);
+                    self.push(Value::Bool(value));
+                }
                 Return => {
                     println!("{}", self.pop());
                     return Ok;
                 }
-                Subtract => {
-                    let (a, b) = self.binary_op();
-                    self.push(a - b);
-                }
             }
+        }
+    }
+
+    fn is_falsey(&self, value: Value) -> bool {
+        match value {
+            Value::Nil => true,
+            Value::Bool(bool) => !bool,
+            Value::Number(n) =>  n == 0.0,
         }
     }
 
@@ -110,9 +149,4 @@ impl VM {
         self.reset_stack();
     }
 
-    fn binary_op(&mut self) -> (Value, Value) {
-        let b = self.pop();
-        let a = self.pop();
-        (a, b)
-    }
 }

@@ -1,6 +1,6 @@
 use std::{fmt, ops};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum Value {
     Bool(bool),
     Nil,
