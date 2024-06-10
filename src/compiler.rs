@@ -201,7 +201,7 @@ impl<'a> Parser<'a> {
     }
 
     fn number(&mut self) {
-        let value: Value = self.previous.value.parse().unwrap();
+        let value = Value::Number(self.previous.value.parse().unwrap());
         self.emit_constant(value);
     }
 

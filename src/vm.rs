@@ -35,12 +35,20 @@ impl VM {
         return self.run();
     }
 
-    pub fn push(&mut self, value: Value) {
+    fn push(&mut self, value: Value) {
         self.stack.push(value);
     }
 
-    pub fn pop(&mut self) -> Value {
+    fn pop(&mut self) -> Value {
         self.stack.pop().unwrap()
+    }
+
+    fn peek(&mut self, distance: usize) -> &Value {
+        &self.stack[self.stack.len() - 1 - distance] 
+    }
+
+    fn reset_stack(&mut self) {
+        self.stack = vec![];
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -65,7 +73,7 @@ impl VM {
                     self.push(a + b);
                 }
                 Constant(constant_index) => {
-                    self.push(self.chunk.constants()[constant_index as usize]);
+                    self.push(self.chunk.constants()[constant_index as usize].clone());
                 }
                 Divide => {
                     let (a, b) = self.binary_op();
@@ -76,8 +84,13 @@ impl VM {
                     self.push(a * b);
                 }
                 Negate => {
-                    let res = self.pop();
-                    self.push(-res);
+                    if let Value::Number(_) = self.peek(0) {
+                        let value = self.pop();
+                        self.push(-value);
+                    } else {
+                        self.runtime_error("Operand must be a number");
+                        return RuntimeError
+                    }
                 }
                 Return => {
                     println!("{}", self.pop());
@@ -89,6 +102,12 @@ impl VM {
                 }
             }
         }
+    }
+
+    fn runtime_error(&mut self, message: &str) {
+        let line = self.chunk.lines()[self.ip - 1];
+        eprintln!("{message}\n [line {line} in script]");
+        self.reset_stack();
     }
 
     fn binary_op(&mut self) -> (Value, Value) {

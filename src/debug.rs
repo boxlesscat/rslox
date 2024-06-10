@@ -41,7 +41,7 @@ impl<'a> Disassembler<'a> {
 
     fn constant_instruction(&self, name: &str, constant_index: usize) {
         print!("{}", name);
-        let constant = self.chunk.constants()[constant_index];
+        let constant = self.chunk.constants()[constant_index].clone();
         let constant = format!("'{constant}'");
         println!(" {constant_index:>10} {constant:>10}");
     }
