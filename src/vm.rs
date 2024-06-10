@@ -65,7 +65,7 @@ impl VM {
                     self.push(a + b);
                 }
                 Constant(constant_index) => {
-                    self.push(self.chunk.constants().values()[constant_index as usize]);
+                    self.push(self.chunk.constants()[constant_index as usize]);
                 }
                 Divide => {
                     let (a, b) = self.binary_op();

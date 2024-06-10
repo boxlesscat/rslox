@@ -1,5 +1,4 @@
 use crate::value::Value;
-use crate::value::ValueArray;
 use std::{default::Default, fmt::Debug};
 
 #[derive(Debug, Clone, Copy)]
@@ -16,7 +15,7 @@ pub enum OpCode {
 #[derive(Default)]
 pub struct Chunk {
     code: Vec<OpCode>,
-    constants: ValueArray,
+    constants: Vec<Value>,
     lines: Vec<usize>,
 }
 
@@ -36,7 +35,7 @@ impl Chunk {
     }
 
     #[inline]
-    pub fn constants(&self) -> &ValueArray {
+    pub fn constants(&self) -> &[Value] {
         &self.constants
     }
 
@@ -46,8 +45,8 @@ impl Chunk {
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {
-        self.constants.write(value);
-        self.constants.values().len() - 1
+        self.constants.push(value);
+        self.constants.len() - 1
     }
 
     pub fn write_constant(&mut self, value: Value, line: usize) -> usize {
