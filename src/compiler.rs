@@ -89,7 +89,7 @@ impl<'a> ParseRule<'a> {
             Less            => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
             LessEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
             Idenitifier     => Self::new(None,                      None,                       Precedence::None),
-            String          => Self::new(None,                      None,                       Precedence::None),
+            String          => Self::new(Some(Parser::string),      None,                       Precedence::None),
             Number          => Self::new(Some(Parser::number),      None,                       Precedence::None),
             And             => Self::new(None,                      None,                       Precedence::None),
             Class           => Self::new(None,                      None,                       Precedence::None),
@@ -266,6 +266,10 @@ impl<'a> Parser<'a> {
             let infix_rule = ParseRule::get_rule(self.previous.token_type).infix.unwrap();
             infix_rule(self);
         }
+    }
+
+    fn string(&mut self) {
+        self.emit_constant(Value::String(String::from(self.previous.value)));
     }
 
     fn emit_constant(&mut self, value: Value) {

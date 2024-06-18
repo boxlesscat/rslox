@@ -85,6 +85,10 @@ impl VM {
                         let b = self.pop();
                         let a = self.pop();
                         self.push(Value::Bool(a $op b));
+                    } else if let (Value::String(_), Value::String(_)) = (self.peek(0), self.peek(1)) {
+                        let b = self.pop();
+                        let a = self.pop();
+                        self.push(Value::Bool(a $op b));
                     } else {
                         self.runtime_error("Operands must be numbers");
                         return RuntimeError;
@@ -138,8 +142,9 @@ impl VM {
     fn is_falsey(&self, value: Value) -> bool {
         match value {
             Value::Nil => true,
-            Value::Bool(bool) => !bool,
-            Value::Number(n) =>  n == 0.0,
+            Value::Bool(bool)   => !bool,
+            Value::Number(n)    =>  n == 0.0,
+            Value::String(s)    =>  s.len() == 0,
         }
     }
 

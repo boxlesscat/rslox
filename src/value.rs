@@ -1,18 +1,21 @@
-use std::{fmt, ops};
+use std::fmt;
+use std::ops;
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum Value {
     Bool(bool),
     Nil,
     Number(f64),
+    String(String), // takes up 24 bytes. not a good idea
 }
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bool(b)    => write!(f, "{b}"),
-            Self::Nil               => write!(f, "nil"),
-            Self::Number(n)   => write!(f, "{n}"),
+            Self::Bool(b)   => write!(f, "{b}"),
+            Self::Nil       => write!(f, "nil"),
+            Self::Number(n) => write!(f, "{n}"),
+            Self::String(s) => write!(f, "{s}"),
         }   
     }
 }
@@ -22,6 +25,7 @@ impl ops::Add for Value {
     fn add(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Self::Number(l), Self::Number(r)) => Self::Number(l + r),
+            (Self::String(l), Self::String(r)) => Self::String(l + &r),
             (l, r) => panic!("could not add {l:?} and {r:?}"),
         }
     }
