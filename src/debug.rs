@@ -49,6 +49,9 @@ impl<'a> Disassembler<'a> {
             OpGetGlobal(i)              => self.constant_instruction("OP Get Global", i as usize),
             OpSetGlobal(i)              => self.constant_instruction("OP Set Global", i as usize),
 
+            OpGetLocal(i)               => self.byte_instruction("Op Get Local", i as usize),
+            OpSetLocal(i)               => self.byte_instruction("Op Set Local", i as usize),
+
             Pop                         => self.simple_instruction("OP Pop"),
             Print                       => self.simple_instruction("OP Print"),
             Return                      => self.simple_instruction("OP Return"),
@@ -57,13 +60,18 @@ impl<'a> Disassembler<'a> {
     }
 
     fn constant_instruction(&self, name: &str, constant_index: usize) {
-        print!("{}", name);
+        print!("{name}");
         let constant = self.chunk.constants()[constant_index].clone();
         let constant = format!("'{constant}'");
         println!(" {constant_index:>10} {constant:>10}");
     }
-
+    
     fn simple_instruction(&self, name: &str) {
         println!("{}", name);
     }
+    
+    fn byte_instruction(&self, name: &str, slot: usize) {
+        println!(" {name:>10} {slot:>10}");
+    }
+
 }

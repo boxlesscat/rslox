@@ -101,10 +101,18 @@ impl VM {
             }
             match instruction {
                 
-                Add         => bin_op!(+),
                 Subtract    => bin_op!(-),
                 Multiply    => bin_op!(*),
                 Divide      => bin_op!(/),
+                Add         =>  {
+                    if let (Value::String(_), Value::String(_)) = (self.peek(0), self.peek(1)) {
+                        let b = self.pop();
+                        let a = self.pop();
+                        self.push(a + b);
+                    } else {
+                        bin_op!(+)
+                    }
+                }
                 
                 True        => self.push(Value::Bool(true)),
                 False       => self.push(Value::Bool(false)),
@@ -135,6 +143,7 @@ impl VM {
                     let value = self.is_falsey(value);
                     self.push(Value::Bool(value));
                 },
+
                 OpDefineGlobal(global) => {
                     if let Value::String(name) = self.chunk.constants()[global as usize].clone() {
                         self.globals.insert(name, self.peek(0).clone());
@@ -166,6 +175,10 @@ impl VM {
                         }
                     }
                 }
+
+                OpGetLocal(slot) => self.push(self.stack[slot as usize].clone()),
+                OpSetLocal(slot) => self.stack[slot as usize] = self.peek(0).clone(),
+
                 Pop => {self.pop();},
                 Print => println!("{}", self.pop()),
                 Return => return Ok
