@@ -45,7 +45,7 @@ impl std::ops::Add<u8> for Precedence {
     }
 }
 
-type ParseFn<'a> = fn(&mut Parser<'a>);
+type ParseFn<'a> = fn(&mut Parser<'a>, bool);
 
 struct ParseRule<'a> {
     prefix: Option<ParseFn<'a>>,
@@ -88,7 +88,7 @@ impl<'a> ParseRule<'a> {
             GreaterEqual    => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
             Less            => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
             LessEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
-            Idenitifier     => Self::new(None,                      None,                       Precedence::None),
+            Idenitifier     => Self::new(Some(Parser::variable),    None,                       Precedence::None),
             String          => Self::new(Some(Parser::string),      None,                       Precedence::None),
             Number          => Self::new(Some(Parser::number),      None,                       Precedence::None),
             And             => Self::new(None,                      None,                       Precedence::None),
@@ -123,14 +123,97 @@ impl<'a> Parser<'a> {
 
     pub fn compile(&mut self) -> Result<Chunk, ()> {
         self.advance();
-        self.expression();
-        self.consume(TokenType::EOF, "Expect end of expression.");
+        while !self.r#match(TokenType::EOF) {
+            self.declaration();
+        }
         self.end_compiler();
         if self.had_error {
             Err(())
         } else {
             Ok(mem::take(&mut self.compiler.chunk))
         }
+    }
+
+    fn declaration(&mut self) {
+        if self.r#match(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.statement();
+        }
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    fn var_declaration(&mut self) {
+        let global = self.parse_variable("Expect variable name.");
+        if self.r#match(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_byte(OpCode::Nil);
+        }
+        self.consume(TokenType::Semicolon, "Expect ';' after variable declaration.");
+        self.define_variable(global);
+    }
+
+    fn parse_variable(&mut self, error_message: &str) -> u8 {
+        self.consume(TokenType::Idenitifier, error_message);
+        self.idenitifier_constant(self.previous.clone())
+    }
+
+    fn idenitifier_constant(&mut self, token: Token) -> u8 {
+        self.make_constant(Value::String(token.value.to_string()))
+    }
+
+    fn define_variable(&mut self, global: u8) {
+        self.emit_byte(OpCode::OpDefineGlobal(global));
+    }
+
+    fn synchronize(&mut self) {
+        use TokenType::*;
+        self.panic_mode = false;
+        while self.current.token_type != EOF {
+            if self.previous.token_type == Semicolon {
+                return;
+            }
+            match self.current.token_type {
+                Class | Fun | Var | For | If | While | Print | Return => return,
+                _ => ()
+            }
+            self.advance();
+        }
+    }
+
+    fn statement(&mut self) {
+        if self.r#match(TokenType::Print) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    fn expression_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after expression.");
+        self.emit_byte(OpCode::Pop);
+    }
+
+    fn r#match(&mut self, token_type: TokenType) -> bool {
+        if !self.check(token_type) {
+            return false;
+        }
+        self.advance();
+        return true;
+    }
+
+    fn check(&mut self, token_type: TokenType) -> bool {
+        return self.current.token_type == token_type;
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::Semicolon, "Expect ';' after value.");
+        self.emit_byte(OpCode::Print);
     }
 
     fn advance(&mut self) {
@@ -201,23 +284,37 @@ impl<'a> Parser<'a> {
         self.emit_byte(OpCode::Return);
     }
 
-    fn expression(&mut self) {
-        self.parser_precendence(Precedence::Assignment);
+    fn variable(&mut self, can_assign: bool) {
+        self.named_variable(self.previous.clone(), can_assign);
     }
 
-    fn number(&mut self) {
+    fn named_variable(&mut self, token: Token, can_assign: bool) {
+        let arg = self.idenitifier_constant(token);
+        if can_assign && self.r#match(TokenType::Equal) {
+            self.expression();
+            self.emit_byte(OpCode::OpSetGlobal(arg));
+        } else {
+            self.emit_byte(OpCode::OpGetGlobal(arg));
+        }
+    }
+
+    fn expression(&mut self) {
+        self.parse_precendence(Precedence::Assignment);
+    }
+
+    fn number(&mut self, _can_assign: bool) {
         let value = Value::Number(self.previous.value.parse().unwrap());
         self.emit_constant(value);
     }
 
-    fn grouping(&mut self) {
+    fn grouping(&mut self, _can_assign: bool) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn unary(&mut self) {
+    fn unary(&mut self, _can_assign: bool) {
         let operator_type = self.previous.token_type;
-        self.parser_precendence(Precedence::Unary);
+        self.parse_precendence(Precedence::Unary);
         match operator_type {
             TokenType::Minus => self.emit_byte(OpCode::Negate),
             TokenType::Bang => self.emit_byte(OpCode::Not),
@@ -225,10 +322,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn binary(&mut self) {
+    fn binary(&mut self, _can_assign: bool) {
         let operator_type = self.previous.token_type;
         let rule = ParseRule::get_rule(operator_type);
-        self.parser_precendence(rule.precedence + 1);
+        self.parse_precendence(rule.precedence + 1);
         use TokenType::*;
         match operator_type {
             BangEqual       => self.emit_bytes(OpCode::Equal, OpCode::Not),
@@ -245,7 +342,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn literal(&mut self) {
+    fn literal(&mut self, _can_assign: bool) {
         match self.previous.token_type {
             TokenType::False => self.emit_byte(OpCode::False),
             TokenType::Nil =>   self.emit_byte(OpCode::Nil),
@@ -254,22 +351,27 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parser_precendence(&mut self, precendence: Precedence) {
+    fn parse_precendence(&mut self, precendence: Precedence) {
         self.advance();
         let prefix_rule = ParseRule::get_rule(self.previous.token_type).prefix;
+        let can_assign = precendence <= Precedence::Assignment;
         match prefix_rule {
             None => return self.error("Expect expression."),
-            Some(rule) => rule(self),
+            Some(rule) => rule(self, can_assign),
         }
         while precendence <= ParseRule::get_rule(self.current.token_type).precedence {
             self.advance();
             let infix_rule = ParseRule::get_rule(self.previous.token_type).infix.unwrap();
-            infix_rule(self);
+            infix_rule(self, can_assign);
+        }
+        if can_assign && self.r#match(TokenType::Equal){
+            self.error("Invalid assignment target.");
         }
     }
 
-    fn string(&mut self) {
-        self.emit_constant(Value::String(String::from(self.previous.value)));
+    fn string(&mut self, _can_assign: bool) {
+        let s = String::from(self.previous.value);
+        self.emit_constant(Value::String(s[1..s.len() - 1].to_string()));
     }
 
     fn emit_constant(&mut self, value: Value) {

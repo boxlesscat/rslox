@@ -2,10 +2,13 @@ use crate::chunk::Chunk;
 use crate::compiler::Parser;
 use crate::value::Value;
 
+use std::collections::HashMap;
+
 pub struct VM {
     chunk: Chunk,
     ip: usize,
     stack: Vec<Value>,
+    globals: HashMap<String, Value>,
 }
 
 #[derive(PartialEq)]
@@ -21,6 +24,7 @@ impl VM {
             chunk: Chunk::new(),
             ip: 0,
             stack: Vec::new(),
+            globals: HashMap::new(),
         }
     }
 
@@ -130,11 +134,41 @@ impl VM {
                     let value = self.pop();
                     let value = self.is_falsey(value);
                     self.push(Value::Bool(value));
+                },
+                OpDefineGlobal(global) => {
+                    if let Value::String(name) = self.chunk.constants()[global as usize].clone() {
+                        self.globals.insert(name, self.peek(0).clone());
+                        self.pop();
+                    }
                 }
-                Return => {
-                    println!("{}", self.pop());
-                    return Ok;
+                OpGetGlobal(arg) => {
+                    if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
+                        let value = self.globals.get(&name);
+                        match value {
+                            Some(v) => self.push(v.clone()),
+                            None => {
+                                self.runtime_error(&format!("Undefined variable '{name}'"));
+                                return RuntimeError;
+                            }
+                        }
+                    }
                 }
+                OpSetGlobal(arg) => {
+                    if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
+                        let val = self.peek(0).clone();
+                        let value = self.globals.get_mut(&name);
+                        match value {
+                            Some(v) => *v = val,
+                            None    => {
+                                self.runtime_error(&format!("Undefined variable '{name}'"));
+                                return RuntimeError;
+                            }
+                        }
+                    }
+                }
+                Pop => {self.pop();},
+                Print => println!("{}", self.pop()),
+                Return => return Ok
             }
         }
     }

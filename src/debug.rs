@@ -28,23 +28,30 @@ impl<'a> Disassembler<'a> {
         }
         let instruction = self.chunk.code()[offset];
         match instruction {
-            Add             => self.simple_instruction("OP Add"),
-            Subtract        => self.simple_instruction("OP Subtract"),
-            Multiply        => self.simple_instruction("OP Multiply"),
-            Divide          => self.simple_instruction("OP Divide"),
-            
-            True            => self.simple_instruction("OP True"),
-            False           => self.simple_instruction("OP False"),
-            Nil             => self.simple_instruction("OP Nil"),
-            
-            Greater         => self.simple_instruction("OP Greater"),
-            Less            => self.simple_instruction("OP Less"),
-            Equal           => self.simple_instruction("OP Equal"),
+            Add                         => self.simple_instruction("OP Add"),
+            Subtract                    => self.simple_instruction("OP Subtract"),
+            Multiply                    => self.simple_instruction("OP Multiply"),
+            Divide                      => self.simple_instruction("OP Divide"),
 
-            Constant(constant_index) => self.constant_instruction("OP Constant", constant_index as usize),
-            Negate => self.simple_instruction("OP Negate"),
-            Not => self.simple_instruction("OP Not"),
-            Return => self.simple_instruction("OP Return"),
+            True                        => self.simple_instruction("OP True"),
+            False                       => self.simple_instruction("OP False"),
+            Nil                         => self.simple_instruction("OP Nil"),
+            
+            Greater                     => self.simple_instruction("OP Greater"),
+            Less                        => self.simple_instruction("OP Less"),
+            Equal                       => self.simple_instruction("OP Equal"),
+
+            Constant(constant_index)    => self.constant_instruction("OP Constant", constant_index as usize),
+            Negate                      => self.simple_instruction("OP Negate"),
+            Not                         => self.simple_instruction("OP Not"),
+
+            OpDefineGlobal(i)           => self.constant_instruction("OP Define Global", i as usize),
+            OpGetGlobal(i)              => self.constant_instruction("OP Get Global", i as usize),
+            OpSetGlobal(i)              => self.constant_instruction("OP Set Global", i as usize),
+
+            Pop                         => self.simple_instruction("OP Pop"),
+            Print                       => self.simple_instruction("OP Print"),
+            Return                      => self.simple_instruction("OP Return"),
         };
         offset + 1
     }
