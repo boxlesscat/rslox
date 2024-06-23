@@ -99,7 +99,7 @@ impl<'a> ParseRule<'a> {
             Idenitifier     => Self::new(Some(Parser::variable),    None,                       Precedence::None),
             String          => Self::new(Some(Parser::string),      None,                       Precedence::None),
             Number          => Self::new(Some(Parser::number),      None,                       Precedence::None),
-            And             => Self::new(None,                      None,                       Precedence::None),
+            And             => Self::new(None,                      Some(Parser::and),          Precedence::And),
             Class           => Self::new(None,                      None,                       Precedence::None),
             Else            => Self::new(None,                      None,                       Precedence::None),
             False           => Self::new(Some(Parser::literal),     None,                       Precedence::None),
@@ -107,7 +107,7 @@ impl<'a> ParseRule<'a> {
             Fun             => Self::new(None,                      None,                       Precedence::None),
             If              => Self::new(None,                      None,                       Precedence::None),
             Nil             => Self::new(Some(Parser::literal),     None,                       Precedence::None),
-            Or              => Self::new(None,                      None,                       Precedence::None),
+            Or              => Self::new(None,                      Some(Parser::or),           Precedence::Or),
             Print           => Self::new(None,                      None,                       Precedence::None),
             Return          => Self::new(None,                      None,                       Precedence::None),
             Super           => Self::new(None,                      None,                       Precedence::None),
@@ -203,7 +203,7 @@ impl<'a> Parser<'a> {
             self.mark_initialized();
             return;
         }
-        self.emit_byte(OpCode::OpDefineGlobal(global));
+        self.emit_byte(OpCode::DefineGlobal(global));
     }
 
     fn mark_initialized(&mut self) {
@@ -232,11 +232,110 @@ impl<'a> Parser<'a> {
             self.begin_scope();
             self.block();
             self.end_scope();
+        } else if self.r#match(TokenType::If) {
+            self.if_statement();
+        } else if self.r#match(TokenType::While) {
+            self.while_statement();
+        } else if self.r#match(TokenType::For) {
+            self.for_statement();
         } else {
             self.expression_statement();
         }
     }
 
+    fn for_statement(&mut self) {
+        self.begin_scope();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        if self.r#match(TokenType::Semicolon) {
+
+        } else if self.r#match(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+        let mut loop_start = self.compiler.chunk.code().len();
+        let mut exit_jump = -1;
+        if !self.r#match(TokenType::Semicolon) {
+            self.expression();
+            self.consume(TokenType::Semicolon, "Expect ';' after loop condition");
+            exit_jump = self.emit_jump(OpCode::JumpIfFalse(0)) as i32;
+            self.emit_byte(OpCode::Pop);
+        }
+        if !self.r#match(TokenType::RightParen) {
+            let body_jump = self.emit_jump(OpCode::Jump(0));
+            let increment_start = self.compiler.chunk.code().len();
+            self.expression();
+            self.emit_byte(OpCode::Pop);
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses");
+            self.emit_loop(loop_start);
+            loop_start = increment_start;
+            self.patch_jump(body_jump);
+        }
+        self.statement();
+        self.emit_loop(loop_start);
+        if exit_jump != -1 {
+            self.patch_jump(exit_jump as usize);
+            self.emit_byte(OpCode::Pop);
+        }
+        self.end_scope();
+    }
+
+    fn while_statement(&mut self) {
+        let loop_start = self.compiler.chunk.code().len();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_byte(OpCode::Pop);
+        self.statement();
+        self.emit_loop(loop_start);
+        self.patch_jump(exit_jump);
+        self.emit_byte(OpCode::Pop);
+    }
+
+    fn emit_loop(&mut self, loop_start: usize) {
+        let offset = self.compiler.chunk.code().len() - loop_start + 1;
+        if offset as u16 > u16::MAX {
+            self.error("Loop body too large");
+        }
+        self.emit_byte(OpCode::Loop(offset as u16));
+    }
+
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after 'if'.");
+    
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_byte(OpCode::Pop);
+        self.statement();
+        let else_jump = self.emit_jump(OpCode::Jump(0));
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::Pop);
+        if self.r#match(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
+    fn emit_jump(&mut self, opcode: OpCode) -> usize {
+        self.emit_byte(opcode);
+        return self.compiler.chunk.code().len() - 1;
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        let jump = self.compiler.chunk.code().len() - offset - 1;
+        if jump as u16 > u16::MAX {
+            self.error("Too much code to jump over.");
+        }
+        let opcode = &mut self.compiler.chunk.code()[offset];
+        *opcode = match opcode {
+            OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump as u16),
+            OpCode::Jump(_) => OpCode::Jump(jump as u16),
+            _ => return,
+        };
+    }
+ 
     fn begin_scope(&mut self) {
         self.compiler.scope_depth += 1;
     }
@@ -341,7 +440,7 @@ impl<'a> Parser<'a> {
         {
             use crate::debug::Disassembler;
             if !self.had_error {
-                let disassembler = Disassembler::new(&self.compiler.chunk);
+                let mut disassembler = Disassembler::new(&mut self.compiler.chunk);
                 disassembler.disassemble_chunk("code");
             }
         }
@@ -360,12 +459,12 @@ impl<'a> Parser<'a> {
         let get_op: OpCode;
         let set_op: OpCode;
         if arg != -1 {
-            get_op = OpCode::OpGetLocal(arg as u8);
-            set_op = OpCode::OpSetLocal(arg as u8);
+            get_op = OpCode::GetLocal(arg as u8);
+            set_op = OpCode::SetLocal(arg as u8);
         } else {
             let arg = self.idenitifier_constant(name);
-            get_op = OpCode::OpGetGlobal(arg);
-            set_op = OpCode::OpSetGlobal(arg);
+            get_op = OpCode::GetGlobal(arg);
+            set_op = OpCode::SetGlobal(arg);
         }
         if can_assign && self.r#match(TokenType::Equal) {
             self.expression();
@@ -479,5 +578,21 @@ impl<'a> Parser<'a> {
         } else {
             constant as u8
         }
+    }
+
+    fn and(&mut self, _can_assign: bool) {
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        self.emit_byte(OpCode::Pop);
+        self.parse_precendence(Precedence::And);
+        self.patch_jump(end_jump);
+    }
+
+    fn or(&mut self, _can_assign: bool) {
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        let end_jump = self.emit_jump(OpCode::Jump(0));
+        self.patch_jump(else_jump);
+        self.emit_byte(OpCode::Pop);
+        self.parse_precendence(Precedence::Or);
+        self.patch_jump(end_jump);
     }
 }

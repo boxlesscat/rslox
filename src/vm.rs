@@ -66,7 +66,7 @@ impl VM {
                     print!("[ {} ]", slot);
                 }
                 println!();
-                let disassembler = crate::debug::Disassembler::new(&self.chunk);
+                let mut disassembler = crate::debug::Disassembler::new(&mut self.chunk);
                 disassembler.disassemble_inst(self.ip);
             }
             let instruction = self.chunk.code()[self.ip];
@@ -144,13 +144,13 @@ impl VM {
                     self.push(Value::Bool(value));
                 },
 
-                OpDefineGlobal(global) => {
+                DefineGlobal(global) => {
                     if let Value::String(name) = self.chunk.constants()[global as usize].clone() {
                         self.globals.insert(name, self.peek(0).clone());
                         self.pop();
                     }
                 }
-                OpGetGlobal(arg) => {
+                GetGlobal(arg) => {
                     if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
                         let value = self.globals.get(&name);
                         match value {
@@ -162,7 +162,7 @@ impl VM {
                         }
                     }
                 }
-                OpSetGlobal(arg) => {
+                SetGlobal(arg) => {
                     if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
                         let val = self.peek(0).clone();
                         let value = self.globals.get_mut(&name);
@@ -176,12 +176,22 @@ impl VM {
                     }
                 }
 
-                OpGetLocal(slot) => self.push(self.stack[slot as usize].clone()),
-                OpSetLocal(slot) => self.stack[slot as usize] = self.peek(0).clone(),
+                GetLocal(slot)  => self.push(self.stack[slot as usize].clone()),
+                SetLocal(slot)  => self.stack[slot as usize] = self.peek(0).clone(),
 
+                Jump(offset)        => {
+                    self.ip += offset as usize;
+                }
+                JumpIfFalse(offset) => {
+                    if self.is_falsey(self.peek(0).clone()) {
+                        self.ip += offset as usize;
+                    }
+                }
+                Loop(offset)        => self.ip -= offset as usize, 
+
+                Return => return Ok,
                 Pop => {self.pop();},
                 Print => println!("{}", self.pop()),
-                Return => return Ok
             }
         }
     }

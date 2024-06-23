@@ -4,26 +4,37 @@ use std::{default::Default, fmt::Debug};
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     Add,
-    Constant(u8),
-    Divide,
-    Equal,
-    False,
-    Greater,
-    Less,
+    Subtract,
     Multiply,
+    Divide,
+    
     Negate,
     Not,
+    
+    True,
+    False,
     Nil,
-    OpDefineGlobal(u8),
-    OpGetGlobal(u8),
-    OpGetLocal(u8),
-    OpSetGlobal(u8),
-    OpSetLocal(u8),
+    
+    Equal,
+    Greater,
+    Less,
+    
+    Constant(u8),
+
+    DefineGlobal(u8),
+    GetGlobal(u8),
+    SetGlobal(u8),
+    GetLocal(u8),
+    SetLocal(u8),
+
+    Jump(u16),
+    JumpIfFalse(u16),
+    Loop(u16),
+    Return,
+    
     Pop,
     Print,
-    Return,
-    Subtract,
-    True,
+
 }
 
 #[derive(Default)]
@@ -44,8 +55,8 @@ impl Chunk {
     }
 
     #[inline]
-    pub fn code(&self) -> &[OpCode] {
-        &self.code
+    pub fn code(&mut self) -> &mut [OpCode] {
+        &mut self.code
     }
 
     #[inline]
