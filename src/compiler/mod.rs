@@ -1,32 +1,38 @@
+use crate::compiler::rules::ParseRule;
 use crate::chunk::Chunk;
 use crate::chunk::OpCode;
 use crate::scanner::Scanner;
 use crate::scanner::Token;
 use crate::scanner::TokenType;
 use crate::value::Value;
+
 use std::mem;
+use std::rc::Rc;
+
+mod rules;
+
 
 #[derive(Default)]
 struct Compiler <'a> {
-    chunk: Chunk,
-    locals: Vec<Local<'a>>,
-    scope_depth: i32,
+    chunk:          Chunk,
+    locals:         Vec<Local<'a>>,
+    scope_depth:    i32,
 }
 
 #[derive(Default)]
 struct Local <'a> {
-    name: Token<'a>,
-    depth: i32,
+    name:   Token<'a>,
+    depth:  i32,
 }
 
 #[derive(Default)]
 pub struct Parser<'a> {
-    current: Token<'a>,
-    previous: Token<'a>,
-    had_error: bool,
+    current:    Token<'a>,
+    previous:   Token<'a>,
+    had_error:  bool,
     panic_mode: bool,
-    compiler: Compiler<'a>,
-    scanner: Scanner<'a>,
+    compiler:   Compiler<'a>,
+    scanner:    Scanner<'a>,
 }
 
 #[repr(u8)]
@@ -50,74 +56,6 @@ impl std::ops::Add<u8> for Precedence {
 
     fn add(self, rhs: u8) -> Self::Output {
         unsafe { mem::transmute((self as u8 + rhs) % 11) }
-    }
-}
-
-type ParseFn<'a> = fn(&mut Parser<'a>, bool);
-
-struct ParseRule<'a> {
-    prefix: Option<ParseFn<'a>>,
-    infix: Option<ParseFn<'a>>,
-    precedence: Precedence,
-}
-
-impl<'a> ParseRule<'a> {
-    fn new(
-        prefix: Option<ParseFn<'a>>,
-        infix: Option<ParseFn<'a>>,
-        precedence: Precedence,
-    ) -> Self {
-        Self {
-            prefix,
-            infix,
-            precedence,
-        }
-    }
-
-    fn get_rule(token_type: TokenType) -> Self {
-        use TokenType::*;
-        match token_type {
-            LeftParen       => Self::new(Some(Parser::grouping),    None,                       Precedence::None),
-            RightParen      => Self::new(None,                      None,                       Precedence::None),
-            LeftBrace       => Self::new(None,                      None,                       Precedence::None),
-            RightBrace      => Self::new(None,                      None,                       Precedence::None),
-            Comma           => Self::new(None,                      None,                       Precedence::None),
-            Dot             => Self::new(None,                      None,                       Precedence::None),
-            Minus           => Self::new(Some(Parser::unary),       Some(Parser::binary),       Precedence::Term),
-            Plus            => Self::new(None,                      Some(Parser::binary),       Precedence::Term),
-            Semicolon       => Self::new(None,                      None,                       Precedence::None),
-            Slash           => Self::new(None,                      Some(Parser::binary),       Precedence::Factor),
-            Star            => Self::new(None,                      Some(Parser::binary),       Precedence::Factor),
-            Bang            => Self::new(Some(Parser::unary),       None,                       Precedence::None),
-            BangEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Equality),
-            Equal           => Self::new(None,                      None,                       Precedence::None),
-            EqualEqual      => Self::new(None,                      Some(Parser::binary),       Precedence::Equality),
-            Greater         => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
-            GreaterEqual    => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
-            Less            => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
-            LessEqual       => Self::new(None,                      Some(Parser::binary),       Precedence::Comparision),
-            Idenitifier     => Self::new(Some(Parser::variable),    None,                       Precedence::None),
-            String          => Self::new(Some(Parser::string),      None,                       Precedence::None),
-            Number          => Self::new(Some(Parser::number),      None,                       Precedence::None),
-            And             => Self::new(None,                      Some(Parser::and),          Precedence::And),
-            Class           => Self::new(None,                      None,                       Precedence::None),
-            Else            => Self::new(None,                      None,                       Precedence::None),
-            False           => Self::new(Some(Parser::literal),     None,                       Precedence::None),
-            For             => Self::new(None,                      None,                       Precedence::None),
-            Fun             => Self::new(None,                      None,                       Precedence::None),
-            If              => Self::new(None,                      None,                       Precedence::None),
-            Nil             => Self::new(Some(Parser::literal),     None,                       Precedence::None),
-            Or              => Self::new(None,                      Some(Parser::or),           Precedence::Or),
-            Print           => Self::new(None,                      None,                       Precedence::None),
-            Return          => Self::new(None,                      None,                       Precedence::None),
-            Super           => Self::new(None,                      None,                       Precedence::None),
-            This            => Self::new(None,                      None,                       Precedence::None),
-            True            => Self::new(Some(Parser::literal),     None,                       Precedence::None),
-            Var             => Self::new(None,                      None,                       Precedence::None),
-            While           => Self::new(None,                      None,                       Precedence::None),
-            Error           => Self::new(None,                      None,                       Precedence::None),
-            EOF             => Self::new(None,                      None,                       Precedence::None),
-        }
     }
 }
 
@@ -195,7 +133,7 @@ impl<'a> Parser<'a> {
     }
 
     fn idenitifier_constant(&mut self, token: Token) -> u8 {
-        self.make_constant(Value::String(token.value.to_string()))
+        self.make_constant(Value::String(Rc::new(token.value.to_string())))
     }
 
     fn define_variable(&mut self, global: u8) {
@@ -247,13 +185,13 @@ impl<'a> Parser<'a> {
         self.begin_scope();
         self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
         if self.r#match(TokenType::Semicolon) {
-
+            ()
         } else if self.r#match(TokenType::Var) {
             self.var_declaration();
         } else {
             self.expression_statement();
         }
-        let mut loop_start = self.compiler.chunk.code().len();
+        let mut loop_start = self.compiler.chunk.code.len();
         let mut exit_jump = -1;
         if !self.r#match(TokenType::Semicolon) {
             self.expression();
@@ -263,7 +201,7 @@ impl<'a> Parser<'a> {
         }
         if !self.r#match(TokenType::RightParen) {
             let body_jump = self.emit_jump(OpCode::Jump(0));
-            let increment_start = self.compiler.chunk.code().len();
+            let increment_start = self.compiler.chunk.code.len();
             self.expression();
             self.emit_byte(OpCode::Pop);
             self.consume(TokenType::RightParen, "Expect ')' after for clauses");
@@ -281,7 +219,7 @@ impl<'a> Parser<'a> {
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.compiler.chunk.code().len();
+        let loop_start = self.compiler.chunk.code.len();
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -294,7 +232,7 @@ impl<'a> Parser<'a> {
     }
 
     fn emit_loop(&mut self, loop_start: usize) {
-        let offset = self.compiler.chunk.code().len() - loop_start + 1;
+        let offset = self.compiler.chunk.code.len() - loop_start + 1;
         if offset as u16 > u16::MAX {
             self.error("Loop body too large");
         }
@@ -320,15 +258,15 @@ impl<'a> Parser<'a> {
 
     fn emit_jump(&mut self, opcode: OpCode) -> usize {
         self.emit_byte(opcode);
-        return self.compiler.chunk.code().len() - 1;
+        return self.compiler.chunk.code.len() - 1;
     }
 
     fn patch_jump(&mut self, offset: usize) {
-        let jump = self.compiler.chunk.code().len() - offset - 1;
+        let jump = self.compiler.chunk.code.len() - offset - 1;
         if jump as u16 > u16::MAX {
             self.error("Too much code to jump over.");
         }
-        let opcode = &mut self.compiler.chunk.code()[offset];
+        let opcode = &mut self.compiler.chunk.code[offset];
         *opcode = match opcode {
             OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump as u16),
             OpCode::Jump(_) => OpCode::Jump(jump as u16),
@@ -373,7 +311,7 @@ impl<'a> Parser<'a> {
     }
 
     fn check(&mut self, token_type: TokenType) -> bool {
-        return self.current.token_type == token_type;
+        self.current.token_type == token_type
     }
 
     fn print_statement(&mut self) {
@@ -410,6 +348,7 @@ impl<'a> Parser<'a> {
         if token.token_type == TokenType::EOF {
             eprint!(" at end");
         } else if token.token_type == TokenType::Error {
+            ()
         } else {
             eprint!(" at '{}'", token.value);
         }
@@ -440,7 +379,7 @@ impl<'a> Parser<'a> {
         {
             use crate::debug::Disassembler;
             if !self.had_error {
-                let mut disassembler = Disassembler::new(&mut self.compiler.chunk);
+                let disassembler = Disassembler::new(&mut self.compiler.chunk);
                 disassembler.disassemble_chunk("code");
             }
         }
@@ -560,7 +499,7 @@ impl<'a> Parser<'a> {
 
     fn string(&mut self, _can_assign: bool) {
         let s = String::from(self.previous.value);
-        self.emit_constant(Value::String(s[1..s.len() - 1].to_string()));
+        self.emit_constant(Value::String(Rc::new(s[1..s.len() - 1].to_string())));
     }
 
     fn emit_constant(&mut self, value: Value) {

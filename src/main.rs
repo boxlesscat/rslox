@@ -1,8 +1,9 @@
+use crate::vm::InterpretResult;
+use crate::vm::VM;
+
 use std::io;
 use std::io::Write;
 use std::process::exit;
-
-use vm::VM;
 
 pub mod chunk;
 pub mod compiler;
@@ -38,13 +39,11 @@ fn repl() {
 }
 
 fn run_file(path: &str) {
-    use crate::vm::InterpretResult::*;
     let mut vm = VM::new();
     let source = std::fs::read_to_string(path).expect("Could not open file.");
-    let res = vm.interpret(&source);
-    if res == CompileError {
-        exit(65);
-    } else if res == RuntimeError {
-        exit(70);
+    match vm.interpret(&source) {
+        InterpretResult::CompileError   => exit(65),
+        InterpretResult::RuntimeError   => exit(70),
+        InterpretResult::Ok             => exit(0),
     }
 }

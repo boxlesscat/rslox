@@ -3,15 +3,20 @@ use crate::compiler::Parser;
 use crate::value::Value;
 
 use std::collections::HashMap;
+use std::mem;
+use std::rc::Rc;
+
+
+const STACK_SIZE: usize = u8::MAX as usize;
 
 pub struct VM {
-    chunk: Chunk,
-    ip: usize,
-    stack: Vec<Value>,
-    globals: HashMap<String, Value>,
+    chunk:      Chunk,
+    globals:    HashMap<String, Value>,
+    ip:         usize,
+    stack:      [Value; STACK_SIZE],
+    stack_top:  usize,
 }
 
-#[derive(PartialEq)]
 pub enum InterpretResult {
     Ok,
     CompileError,
@@ -22,9 +27,13 @@ impl VM {
     pub fn new() -> Self {
         Self {
             chunk: Chunk::new(),
-            ip: 0,
-            stack: Vec::new(),
             globals: HashMap::new(),
+            ip: 0,
+            stack: unsafe {
+                #[allow(invalid_value)]
+                mem::MaybeUninit::uninit().assume_init()
+            },
+            stack_top: 0,
         }
     }
 
@@ -40,19 +49,21 @@ impl VM {
     }
 
     fn push(&mut self, value: Value) {
-        self.stack.push(value);
+        self.stack[self.stack_top] = value;
+        self.stack_top += 1;
     }
 
     fn pop(&mut self) -> Value {
-        self.stack.pop().unwrap()
+        self.stack_top -= 1;
+        mem::take(&mut self.stack[self.stack_top])
     }
 
     fn peek(&self, distance: usize) -> &Value {
-        &self.stack[self.stack.len() - 1 - distance] 
+        &self.stack[self.stack_top - 1 - distance] 
     }
 
     fn reset_stack(&mut self) {
-        self.stack = vec![];
+        self.stack_top = 0;
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -62,21 +73,22 @@ impl VM {
             #[cfg(feature = "debug_trace_execution")]
             {
                 print!("          ");
-                for slot in &self.stack {
+                for slot in 0..self.stack_top {
                     print!("[ {} ]", slot);
                 }
                 println!();
-                let mut disassembler = crate::debug::Disassembler::new(&mut self.chunk);
+                let disassembler = crate::debug::Disassembler::new(&self.chunk);
                 disassembler.disassemble_inst(self.ip);
             }
-            let instruction = self.chunk.code()[self.ip];
+            let instruction = self.chunk.code[self.ip];
             self.ip += 1;
+
             macro_rules! bin_op {
                 ($op: tt) => {
-                    if let (Value::Number(_), Value::Number(_)) = (self.peek(0), self.peek(1)) {
-                        let b = self.pop();
-                        let a = self.pop();
-                        self.push(a $op b);
+                    if let (Value::Number(b), Value::Number(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
+                        self.pop();
+                        self.pop();
+                        self.push(Value::Number(a $op b));
                     } else {
                         self.runtime_error("Operands must be numbers");
                         return RuntimeError;
@@ -85,13 +97,13 @@ impl VM {
             }
             macro_rules! cmp_op {
                 ($op: tt) => {
-                    if let (Value::Number(_), Value::Number(_)) = (self.peek(0), self.peek(1)) {
-                        let b = self.pop();
-                        let a = self.pop();
+                    if let (Value::Number(b), Value::Number(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
+                        self.pop();
+                        self.pop();
                         self.push(Value::Bool(a $op b));
-                    } else if let (Value::String(_), Value::String(_)) = (self.peek(0), self.peek(1)) {
-                        let b = self.pop();
-                        let a = self.pop();
+                    } else if let (Value::String(b), Value::String(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
+                        self.pop();
+                        self.pop();
                         self.push(Value::Bool(a $op b));
                     } else {
                         self.runtime_error("Operands must be numbers");
@@ -99,16 +111,17 @@ impl VM {
                     }
                 };
             }
+
             match instruction {
                 
                 Subtract    => bin_op!(-),
                 Multiply    => bin_op!(*),
                 Divide      => bin_op!(/),
                 Add         =>  {
-                    if let (Value::String(_), Value::String(_)) = (self.peek(0), self.peek(1)) {
-                        let b = self.pop();
-                        let a = self.pop();
-                        self.push(a + b);
+                    if let (Value::String(b), Value::String(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
+                        self.pop();
+                        self.pop();
+                        self.push(Value::String(Rc::new(String::with_capacity(b.len() + a.len()) + &b + &a)));
                     } else {
                         bin_op!(+)
                     }
@@ -126,9 +139,7 @@ impl VM {
                     self.push(Value::Bool(a == b));
                 }
 
-                Constant(constant_index) => {
-                    self.push(self.chunk.constants()[constant_index as usize].clone());
-                }
+                Constant(constant_index) => self.push(self.chunk.constants[constant_index as usize].clone()),
                 Negate => {
                     if let Value::Number(_) = self.peek(0) {
                         let value = self.pop();
@@ -145,14 +156,14 @@ impl VM {
                 },
 
                 DefineGlobal(global) => {
-                    if let Value::String(name) = self.chunk.constants()[global as usize].clone() {
-                        self.globals.insert(name, self.peek(0).clone());
+                    if let Value::String(name) = self.chunk.constants[global as usize].clone() {
+                        self.globals.insert(name.to_string(), self.peek(0).clone());
                         self.pop();
                     }
                 }
                 GetGlobal(arg) => {
-                    if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
-                        let value = self.globals.get(&name);
+                    if let Value::String(name) = self.chunk.constants[arg as usize].clone() {
+                        let value = self.globals.get(&name.to_string());
                         match value {
                             Some(v) => self.push(v.clone()),
                             None => {
@@ -163,9 +174,9 @@ impl VM {
                     }
                 }
                 SetGlobal(arg) => {
-                    if let Value::String(name) = self.chunk.constants()[arg as usize].clone() {
+                    if let Value::String(name) = self.chunk.constants[arg as usize].clone() {
                         let val = self.peek(0).clone();
-                        let value = self.globals.get_mut(&name);
+                        let value = self.globals.get_mut(&name.to_string());
                         match value {
                             Some(v) => *v = val,
                             None    => {
@@ -206,7 +217,7 @@ impl VM {
     }
 
     fn runtime_error(&mut self, message: &str) {
-        let line = self.chunk.lines()[self.ip - 1];
+        let line = self.chunk.lines[self.ip - 1];
         eprintln!("{message}\n [line {line} in script]");
         self.reset_stack();
     }

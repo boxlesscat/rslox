@@ -1,47 +1,42 @@
 use crate::value::Value;
-use std::{default::Default, fmt::Debug};
+
+use std::default::Default;
+use std::fmt::Debug;
+
 
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     Add,
-    Subtract,
-    Multiply,
-    Divide,
-    
-    Negate,
-    Not,
-    
-    True,
-    False,
-    Nil,
-    
-    Equal,
-    Greater,
-    Less,
-    
     Constant(u8),
-
     DefineGlobal(u8),
+    Divide,
+    Equal,
+    False,
     GetGlobal(u8),
-    SetGlobal(u8),
     GetLocal(u8),
-    SetLocal(u8),
-
+    Greater,
     Jump(u16),
     JumpIfFalse(u16),
+    Less,
     Loop(u16),
-    Return,
-    
+    Multiply,
+    Negate,
+    Nil,
+    Not,
     Pop,
     Print,
-
+    Return,
+    SetGlobal(u8),
+    SetLocal(u8),
+    Subtract,
+    True,
 }
 
 #[derive(Default)]
 pub struct Chunk {
-    code: Vec<OpCode>,
-    constants: Vec<Value>,
-    lines: Vec<usize>,
+    pub code:       Vec<OpCode>,
+    pub constants:  Vec<Value>,
+    pub lines:      Vec<usize>,
 }
 
 impl Chunk {
@@ -52,21 +47,6 @@ impl Chunk {
     pub fn write<T: Into<OpCode>>(&mut self, op_code: T, line: usize) {
         self.code.push(op_code.into());
         self.lines.push(line);
-    }
-
-    #[inline]
-    pub fn code(&mut self) -> &mut [OpCode] {
-        &mut self.code
-    }
-
-    #[inline]
-    pub fn constants(&self) -> &[Value] {
-        &self.constants
-    }
-
-    #[inline]
-    pub fn lines(&self) -> &[usize] {
-        &self.lines
     }
 
     pub fn add_constant(&mut self, value: Value) -> usize {

@@ -1,12 +1,15 @@
 use std::fmt;
 use std::ops;
+use std::rc::Rc;
 
-#[derive(Clone, Debug, PartialEq, PartialOrd)]
+
+#[derive(Clone, Debug, Default)]
 pub enum Value {
     Bool(bool),
+    #[default]
     Nil,
     Number(f64),
-    String(String), // takes up 24 bytes. not a good idea
+    String(Rc<String>),
 }
 
 impl fmt::Display for Value {
@@ -20,41 +23,14 @@ impl fmt::Display for Value {
     }
 }
 
-impl ops::Add for Value {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Self::Number(l), Self::Number(r)) => Self::Number(l + r),
-            (Self::String(l), Self::String(r)) => Self::String(l + &r),
-            (l, r) => panic!("could not add {l:?} and {r:?}"),
-        }
-    }
-}
-
-impl ops::Div for Value {
-    type Output = Self;
-    fn div(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Self::Number(l), Self::Number(r)) => Self::Number(l / r),
-            (l, r) => panic!("could not add {l:?} and {r:?}"),
-        }
-    }
-}
-impl ops::Mul for Value {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Self::Number(l), Self::Number(r)) => Self::Number(l * r),
-            (l, r) => panic!("could not add {l:?} and {r:?}"),
-        }
-    }
-}
-impl ops::Sub for Value {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Self::Number(l), Self::Number(r)) => Self::Number(l - r),
-            (l, r) => panic!("could not add {l:?} and {r:?}"),
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(a),     Self::Bool(b))      => a == b,
+            (Self::Nil,         Self::Nil)          => true,
+            (Self::Number(a),   Self::Number(b))    => a == b,
+            (Self::String(a),   Self::String(b))    => a == b,
+            _ => false
         }
     }
 }

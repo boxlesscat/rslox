@@ -2,32 +2,31 @@ use crate::chunk::Chunk;
 use crate::chunk::OpCode;
 
 pub struct Disassembler<'a> {
-    chunk: &'a mut Chunk,
+    chunk: &'a Chunk,
 }
 
 impl<'a> Disassembler<'a> {
-    pub fn new(chunk: &'a mut Chunk) -> Self {
+    pub fn new(chunk: &'a Chunk) -> Self {
         Self { chunk }
     }
 
-    pub fn disassemble_chunk(&mut self, name: &str) {
+    pub fn disassemble_chunk(&self, name: &str) {
         println!("\n{name}\n");
-        let mut offset = 0;
-        let len = self.chunk.code().len();
-        while offset < len {
-            offset = self.disassemble_inst(offset);
+        let len = self.chunk.code.len();
+        for offset in 0..len {
+            self.disassemble_inst(offset);
         }
     }
 
-    pub fn disassemble_inst(&mut self, offset: usize) -> usize {
+    pub fn disassemble_inst(&self, offset: usize) {
         use OpCode::*;
         print!("{offset:04} ");
-        if offset > 0 && self.chunk.lines()[offset] == self.chunk.lines()[offset - 1] {
+        if offset > 0 && self.chunk.lines[offset] == self.chunk.lines[offset - 1] {
             print!("   | ");
         } else {
-            print!("{:4} ", self.chunk.lines()[offset]);
+            print!("{:4} ", self.chunk.lines[offset]);
         }
-        let instruction = self.chunk.code()[offset];
+        let instruction = self.chunk.code[offset];
         match instruction {
             Add                         => self.simple_instruction("Add"),
             Subtract                    => self.simple_instruction("Subtract"),
@@ -61,12 +60,11 @@ impl<'a> Disassembler<'a> {
             Pop                         => self.simple_instruction("Pop"),
             Print                       => self.simple_instruction("Print"),
         };
-        offset + 1
     }
 
     fn constant_instruction(&self, name: &str, constant_index: usize) {
         print!("{name:>15}");
-        let constant = self.chunk.constants()[constant_index].clone();
+        let constant = self.chunk.constants[constant_index].clone();
         let constant = format!("'{constant}'");
         println!(" {constant_index:>10} {constant:>10}");
     }
