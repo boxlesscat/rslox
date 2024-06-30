@@ -8,6 +8,10 @@ use std::process::exit;
 pub mod chunk;
 pub mod compiler;
 pub mod debug;
+pub mod native {
+    pub mod clock;
+    pub mod sqrt;
+}
 pub mod scanner;
 pub mod value;
 pub mod vm;

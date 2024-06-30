@@ -51,7 +51,8 @@ impl<'a> Disassembler<'a> {
 
             GetLocal(i)                 => self.byte_instruction("Get Local", i as usize),
             SetLocal(i)                 => self.byte_instruction("Set Local", i as usize),
-
+            Call(i)                     => self.byte_instruction("Call", i as usize),
+            
             Jump(jump)                  => self.jump_instruction("Jump", jump as i32),
             JumpIfFalse(jump)           => self.jump_instruction("Jump If False", jump as i32),
             Loop(jump)                  => self.jump_instruction("Loop", -(jump as i32)),

@@ -7,6 +7,7 @@ use std::fmt::Debug;
 #[derive(Debug, Clone, Copy)]
 pub enum OpCode {
     Add,
+    Call(u8),
     Constant(u8),
     DefineGlobal(u8),
     Divide,
@@ -32,7 +33,7 @@ pub enum OpCode {
     True,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Chunk {
     pub code:       Vec<OpCode>,
     pub constants:  Vec<Value>,

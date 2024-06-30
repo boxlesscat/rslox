@@ -27,7 +27,7 @@ impl<'a> ParseRule<'a> {
     pub fn get_rule(token_type: TokenType) -> Self {
         use TokenType::*;
         match token_type {
-            LeftParen       => Self::new(Some(Parser::grouping),    None,                       Precedence::None),
+            LeftParen       => Self::new(Some(Parser::grouping),    Some(Parser::call),         Precedence::Call),
             RightParen      => Self::new(None,                      None,                       Precedence::None),
             LeftBrace       => Self::new(None,                      None,                       Precedence::None),
             RightBrace      => Self::new(None,                      None,                       Precedence::None),
