@@ -1,3 +1,4 @@
+use crate::chunk::OpCode;
 use crate::compiler::Parser;
 use crate::value::{Function, Native, NativeFunction, Value};
 use crate::native::clock::clock;
@@ -37,7 +38,7 @@ impl VM {
             frames: Vec::new(),
             globals: HashMap::new(),
             stack: unsafe {
-                mem::zeroed() // mem::MaybeUninit::uninit().assume_init() gives seg fault with the build release executable but not dev executable
+                mem::zeroed() // mem::MaybeUninit::uninit().assume_init() gives seg fault with the build release executable but not with dev executable
             },
             stack_top: 0,
         };
@@ -84,6 +85,22 @@ impl VM {
     fn reset_stack(&mut self) {
         self.stack_top = 0;
         self.frames.clear();
+    }
+
+    fn read_byte(&mut self) -> OpCode {
+        self.frame_mut().ip += 1;
+        self.frame().function.chunk.code[self.frame().ip - 1]
+    }
+
+    fn read_constant(&mut self) -> Value {
+        let constant = self.read_byte() as usize;
+        self.frame().function.chunk.constants[constant].clone()
+    }
+
+    fn read_short(&mut self) -> u16 {
+        self.frame_mut().ip += 2;
+        ((self.frame().function.chunk.code[self.frame().ip - 2] as u16) << 8) | 
+        ((self.frame().function.chunk.code[self.frame().ip - 1] as u16))
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -142,7 +159,7 @@ impl VM {
                     if let (Value::String(b), Value::String(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
                         self.pop();
                         self.pop();
-                        self.push(Value::String(Rc::new(String::with_capacity(b.len() + a.len()) + &b + &a)));
+                        self.push(Value::String(Rc::new(String::with_capacity(a.len() + b.len()) + &a + &b)));
                     } else {
                         bin_op!(+)
                     }
@@ -160,7 +177,10 @@ impl VM {
                     self.push(Value::Bool(a == b));
                 }
 
-                Constant(constant_index) => self.push(self.frame().function.chunk.constants[constant_index as usize].clone()),
+                Constant => {
+                    let constant = self.read_constant();
+                    self.push(constant);
+                }
                 Negate => {
                     if let Value::Number(_) = self.peek(0) {
                         let value = self.pop();
@@ -176,14 +196,14 @@ impl VM {
                     self.push(Value::Bool(value));
                 },
 
-                DefineGlobal(global) => {
-                    if let Value::String(name) = self.frame_mut().function.chunk.constants[global as usize].clone() {
+                DefineGlobal => {
+                    if let Value::String(name) = self.read_constant() {
                         let value = self.pop();
                         self.globals.insert(name.to_string(), value);
                     }
                 }
-                GetGlobal(arg) => {
-                    if let Value::String(name) = self.frame_mut().function.chunk.constants[arg as usize].clone() {
+                GetGlobal => {
+                    if let Value::String(name) = self.read_constant() {
                         let value = self.globals.get(&name.to_string());
                         match value {
                             Some(v) => self.push(v.clone()),
@@ -194,8 +214,8 @@ impl VM {
                         }
                     }
                 }
-                SetGlobal(arg) => {
-                    if let Value::String(name) = self.frame_mut().function.chunk.constants[arg as usize].clone() {
+                SetGlobal => {
+                    if let Value::String(name) = self.read_constant() {
                         let val = self.peek(0).clone();
                         let value = self.globals.get_mut(&name.to_string());
                         match value {
@@ -208,20 +228,32 @@ impl VM {
                     }
                 }
 
-                GetLocal(slot)  => self.push(self.stack[self.frame().first_slot + slot as usize].clone()),
-                SetLocal(slot)  => self.stack[self.frame_mut().first_slot + slot as usize] = self.peek(0).clone(),
+                GetLocal        => {
+                    let slot = self.read_byte();
+                    self.push(self.stack[self.frame().first_slot + slot as usize].clone())
+                }
+                SetLocal        => {
+                    let slot = self.read_byte();
+                    self.stack[self.frame_mut().first_slot + slot as usize] = self.peek(0).clone();
+                }
 
-                Jump(offset)        => {
+                Jump            => {
+                    let offset = self.read_short();
                     self.frame_mut().ip += offset as usize;
                 }
-                JumpIfFalse(offset) => {
+                JumpIfFalse     => {
+                    let offset = self.read_short();
                     if self.is_falsey(self.peek(0).clone()) {
                         self.frame_mut().ip += offset as usize;
                     }
                 }
-                Loop(offset)        => self.frame_mut().ip -= offset as usize, 
+                Loop            => {
+                    let offset = self.read_short();
+                    self.frame_mut().ip -= offset as usize
+                }, 
                 
-                Call(arg_count)     => {
+                Call            => {
+                    let arg_count = self.read_byte() as u8;
                     if !self.call_value(self.peek(arg_count as usize).clone(), arg_count) {
                         return InterpretResult::RuntimeError;
                     }

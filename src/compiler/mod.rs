@@ -95,7 +95,9 @@ impl std::ops::Add<u8> for Precedence {
     type Output = Self;
 
     fn add(self, rhs: u8) -> Self::Output {
-        unsafe { mem::transmute((self as u8 + rhs) % 11) }
+        unsafe {
+            mem::transmute((self as u8 + rhs) % 11)
+        }
     }
 }
 
@@ -129,7 +131,7 @@ impl<'a> Parser<'a> {
 
     fn call(&mut self, _can_assign: bool) {
         let arg_count = self.argument_list();
-        self.emit_byte(OpCode::Call(arg_count));
+        self.emit_bytes(OpCode::Call, arg_count);
     }
 
     fn argument_list(&mut self) -> u8 {
@@ -228,7 +230,7 @@ impl<'a> Parser<'a> {
             self.mark_initialized();
             return;
         }
-        self.emit_byte(OpCode::DefineGlobal(global));
+        self.emit_bytes(OpCode::DefineGlobal, global);
     }
 
     fn mark_initialized(&mut self) {
@@ -260,7 +262,7 @@ impl<'a> Parser<'a> {
         self.block();
         let function = self.end_compiler();
         let constant = self.make_constant(Value::Function(Rc::new(function)));
-        self.emit_byte(OpCode::Constant(constant));
+        self.emit_bytes(OpCode::Constant, constant);
     }
 
     fn synchronize(&mut self) {
@@ -313,11 +315,11 @@ impl<'a> Parser<'a> {
         if !self.r#match(TokenType::Semicolon) {
             self.expression();
             self.consume(TokenType::Semicolon, "Expect ';' after loop condition");
-            exit_jump = self.emit_jump(OpCode::JumpIfFalse(0)) as i32;
+            exit_jump = self.emit_jump(OpCode::JumpIfFalse) as i32;
             self.emit_byte(OpCode::Pop);
         }
         if !self.r#match(TokenType::RightParen) {
-            let body_jump = self.emit_jump(OpCode::Jump(0));
+            let body_jump = self.emit_jump(OpCode::Jump);
             let increment_start = self.compiler.function.chunk.code.len();
             self.expression();
             self.emit_byte(OpCode::Pop);
@@ -340,7 +342,7 @@ impl<'a> Parser<'a> {
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
-        let exit_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        let exit_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop);
         self.statement();
         self.emit_loop(loop_start);
@@ -349,11 +351,13 @@ impl<'a> Parser<'a> {
     }
 
     fn emit_loop(&mut self, loop_start: usize) {
-        let offset = self.compiler.function.chunk.code.len() - loop_start + 1;
+        self.emit_byte(OpCode::Loop);
+        let offset = self.compiler.function.chunk.code.len() - loop_start + 2;
         if offset as u16 > u16::MAX {
             self.error("Loop body too large");
         }
-        self.emit_byte(OpCode::Loop(offset as u16));
+        self.emit_byte(((offset >> 8) & 0xff) as u8);
+        self.emit_byte((offset & 0xff) as u8);
     }
 
     fn if_statement(&mut self) {
@@ -361,10 +365,10 @@ impl<'a> Parser<'a> {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after 'if'.");
     
-        let then_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop);
         self.statement();
-        let else_jump = self.emit_jump(OpCode::Jump(0));
+        let else_jump = self.emit_jump(OpCode::Jump);
         self.patch_jump(then_jump);
         self.emit_byte(OpCode::Pop);
         if self.r#match(TokenType::Else) {
@@ -373,22 +377,20 @@ impl<'a> Parser<'a> {
         self.patch_jump(else_jump);
     }
 
-    fn emit_jump(&mut self, opcode: OpCode) -> usize {
-        self.emit_byte(opcode);
-        return self.compiler.function.chunk.code.len() - 1;
+    fn emit_jump<T: Into<OpCode>>(&mut self, instruction: T) -> usize {
+        self.emit_byte(instruction);
+        self.emit_byte(0xff);
+        self.emit_byte(0xff);
+        return self.compiler.function.chunk.code.len() - 2;
     }
 
     fn patch_jump(&mut self, offset: usize) {
-        let jump = self.compiler.function.chunk.code.len() - offset - 1;
+        let jump = self.compiler.function.chunk.code.len() - offset - 2;
         if jump as u16 > u16::MAX {
             self.error("Too much code to jump over.");
         }
-        let opcode = &mut self.compiler.function.chunk.code[offset];
-        *opcode = match opcode {
-            OpCode::JumpIfFalse(_) => OpCode::JumpIfFalse(jump as u16),
-            OpCode::Jump(_) => OpCode::Jump(jump as u16),
-            _ => return,
-        };
+        self.compiler.function.chunk.code[offset] = (((jump >> 8) & 0xff) as u8).into();
+        self.compiler.function.chunk.code[offset + 1] = ((jump & 0xff) as u8).into();
     }
  
     fn begin_scope(&mut self) {
@@ -492,13 +494,13 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn emit_byte(&mut self, op_code: OpCode) {
-        self.compiler.function.chunk.write(op_code, self.previous.line);
+    fn emit_byte<T: Into<OpCode>>(&mut self, byte: T) {
+        self.compiler.function.chunk.write(byte, self.previous.line);
     }
 
-    fn emit_bytes(&mut self, op_code1: OpCode, op_code2: OpCode) {
-        self.compiler.function.chunk.write(op_code1, self.previous.line);
-        self.compiler.function.chunk.write(op_code2, self.previous.line);
+    fn emit_bytes<T: Into<OpCode>, U: Into<OpCode>>(&mut self, byte1: T, byte2: U) {
+        self.emit_byte(byte1);
+        self.emit_byte(byte2);
     }
 
     fn end_compiler(&mut self) -> Function {
@@ -533,22 +535,22 @@ impl<'a> Parser<'a> {
     }
 
     fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let arg = self.resolve_local(&name);
+        let mut arg = self.resolve_local(&name);
         let get_op: OpCode;
         let set_op: OpCode;
         if arg != -1 {
-            get_op = OpCode::GetLocal(arg as u8);
-            set_op = OpCode::SetLocal(arg as u8);
+            get_op = OpCode::GetLocal;
+            set_op = OpCode::SetLocal;
         } else {
-            let arg = self.idenitifier_constant(name);
-            get_op = OpCode::GetGlobal(arg);
-            set_op = OpCode::SetGlobal(arg);
+            arg = self.idenitifier_constant(name) as i32;
+            get_op = OpCode::GetGlobal;
+            set_op = OpCode::SetGlobal;
         }
         if can_assign && self.r#match(TokenType::Equal) {
             self.expression();
-            self.emit_byte(set_op);
+            self.emit_bytes(set_op, arg as u8);
         } else {
-            self.emit_byte(get_op);
+            self.emit_bytes(get_op, arg as u8);
         }
     }
 
@@ -643,7 +645,7 @@ impl<'a> Parser<'a> {
 
     fn emit_constant(&mut self, value: Value) {
         let constant = self.make_constant(value);
-        self.compiler.function.chunk.write(OpCode::Constant(constant), self.previous.line);
+        self.emit_bytes(OpCode::Constant, constant);
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
@@ -657,15 +659,15 @@ impl<'a> Parser<'a> {
     }
 
     fn and(&mut self, _can_assign: bool) {
-        let end_jump = self.emit_jump(OpCode::JumpIfFalse(0));
+        let end_jump = self.emit_jump(OpCode::JumpIfFalse);
         self.emit_byte(OpCode::Pop);
         self.parse_precendence(Precedence::And);
         self.patch_jump(end_jump);
     }
 
     fn or(&mut self, _can_assign: bool) {
-        let else_jump = self.emit_jump(OpCode::JumpIfFalse(0));
-        let end_jump = self.emit_jump(OpCode::Jump(0));
+        let else_jump = self.emit_jump(OpCode::JumpIfFalse);
+        let end_jump = self.emit_jump(OpCode::Jump);
         self.patch_jump(else_jump);
         self.emit_byte(OpCode::Pop);
         self.parse_precendence(Precedence::Or);

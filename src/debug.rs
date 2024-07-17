@@ -1,5 +1,4 @@
-use crate::chunk::Chunk;
-use crate::chunk::OpCode;
+use crate::chunk::{Chunk, OpCode};
 
 pub struct Disassembler<'a> {
     chunk: &'a Chunk,
@@ -11,75 +10,88 @@ impl<'a> Disassembler<'a> {
     }
 
     pub fn disassemble_chunk(&self, name: &str) {
-        println!("\n{name}\n");
-        let len = self.chunk.code.len();
-        for offset in 0..len {
-            self.disassemble_inst(offset);
+        println!("== {name} ==");
+        let mut offset = 0;
+        let count = self.chunk.code.len();
+        while offset < count {
+            offset = self.disassemble_instruction(offset);
         }
     }
 
-    pub fn disassemble_inst(&self, offset: usize) {
-        use OpCode::*;
-        print!("{offset:04} ");
+    fn constant_instruction(&self, name: &str, offset: usize) -> usize {
+        let constant = self.chunk.code[offset + 1] as usize;
+        println!("{name:>16} {constant:>4} '{}'", self.chunk.constants[constant]);
+        offset + 2
+    }
+
+    fn simple_instruction(&self, name: &str, offset: usize) -> usize {
+        println!("{name}");
+        offset + 1
+    }
+
+    fn byte_instruction(&self, name: &str, offset: usize) -> usize {
+        let slot = self.chunk.code[offset + 1] as usize;
+        println!("{name:>16} {slot:>4}");
+        offset + 2
+    }
+
+    fn jump_instruction(&self, name: &str, sign: i32, offset: usize) -> usize {
+        let mut jump = (self.chunk.code[offset + 1] as i16) << 8;
+        jump |= self.chunk.code[offset + 2] as i16;
+        println!("{name:>16} {offset:>4} -> {}", offset as i32 + 3 + sign * jump as i32);
+        offset + 3
+    }
+
+    fn disassemble_instruction(&self, offset: usize) -> usize {
+        print!("{offset:>4}");
         if offset > 0 && self.chunk.lines[offset] == self.chunk.lines[offset - 1] {
             print!("   | ");
         } else {
-            print!("{:4} ", self.chunk.lines[offset]);
+            print!("{:>4}", self.chunk.lines[offset]);
         }
         let instruction = self.chunk.code[offset];
         match instruction {
-            Add                         => self.simple_instruction("Add"),
-            Subtract                    => self.simple_instruction("Subtract"),
-            Multiply                    => self.simple_instruction("Multiply"),
-            Divide                      => self.simple_instruction("Divide"),
-
-            True                        => self.simple_instruction("True"),
-            False                       => self.simple_instruction("False"),
-            Nil                         => self.simple_instruction("Nil"),
+            OpCode::Constant        => self.constant_instruction("Constant", offset),
             
-            Greater                     => self.simple_instruction("Greater"),
-            Less                        => self.simple_instruction("Less"),
-            Equal                       => self.simple_instruction("Equal"),
+            OpCode::Nil             => self.simple_instruction("Nil", offset),
+            OpCode::True            => self.simple_instruction("True", offset),
+            OpCode::False           => self.simple_instruction("False", offset),
+            OpCode::Pop             => self.simple_instruction("Pop", offset),
 
-            Constant(constant_index)    => self.constant_instruction("Constant", constant_index as usize),
-            Negate                      => self.simple_instruction("Negate"),
-            Not                         => self.simple_instruction("Not"),
-
-            DefineGlobal(i)             => self.constant_instruction("Define Global", i as usize),
-            GetGlobal(i)                => self.constant_instruction("Get Global", i as usize),
-            SetGlobal(i)                => self.constant_instruction("Set Global", i as usize),
-
-            GetLocal(i)                 => self.byte_instruction("Get Local", i as usize),
-            SetLocal(i)                 => self.byte_instruction("Set Local", i as usize),
-            Call(i)                     => self.byte_instruction("Call", i as usize),
+            OpCode::GetLocal        => self.byte_instruction("Get Local", offset),
+            OpCode::SetLocal        => self.byte_instruction("Set Local", offset),
             
-            Jump(jump)                  => self.jump_instruction("Jump", jump as i32),
-            JumpIfFalse(jump)           => self.jump_instruction("Jump If False", jump as i32),
-            Loop(jump)                  => self.jump_instruction("Loop", -(jump as i32)),
-            
-            Return                      => self.simple_instruction("Return"),
-            Pop                         => self.simple_instruction("Pop"),
-            Print                       => self.simple_instruction("Print"),
-        };
-    }
+            OpCode::GetGlobal       => self.constant_instruction("Get Global", offset),
+            OpCode::DefineGlobal    => self.constant_instruction("Define Global", offset),
+            OpCode::SetGlobal       => self.constant_instruction("Set Global", offset),
 
-    fn constant_instruction(&self, name: &str, constant_index: usize) {
-        print!("{name:>15}");
-        let constant = self.chunk.constants[constant_index].clone();
-        let constant = format!("'{constant}'");
-        println!(" {constant_index:>10} {constant:>10}");
-    }
-    
-    fn simple_instruction(&self, name: &str) {
-        println!("{name:>15}");
-    }
-    
-    fn byte_instruction(&self, name: &str, slot: usize) {
-        println!("{name:>15} {slot:>10}");
-    }
-    
-    fn jump_instruction(&self, name: &str, jump: i32) {
-        println!("{name:>15} {jump:>10}");
+            OpCode::Equal           => self.simple_instruction("Equal", offset),
+            OpCode::Greater         => self.simple_instruction("Greater", offset),
+            OpCode::Less            => self.simple_instruction("Less", offset),
+
+            OpCode::Add             => self.simple_instruction("Add", offset),
+            OpCode::Subtract        => self.simple_instruction("Subtract", offset),
+            OpCode::Multiply        => self.simple_instruction("Multiply", offset),
+            OpCode::Divide          => self.simple_instruction("Divide", offset),
+            OpCode::Not             => self.simple_instruction("Not", offset),
+            OpCode::Negate          => self.simple_instruction("Negate", offset),
+
+            OpCode::Print           => self.simple_instruction("Print", offset),
+
+            OpCode::Jump            => self.jump_instruction("Jump", 1, offset),
+            OpCode::JumpIfFalse     => self.jump_instruction("Jump If False", 1, offset),
+            OpCode::Loop            => self.jump_instruction("Loop", -1, offset),
+
+            OpCode::Call            => self.byte_instruction("Call", offset),
+
+            OpCode::Return          => self.simple_instruction("Return", offset),
+            #[allow(unreachable_patterns)]
+            _                       => {
+                println!("Unknown opcode");
+                return offset + 1
+            }
+            
+        }
     }
 
 }

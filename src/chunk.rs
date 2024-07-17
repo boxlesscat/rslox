@@ -2,24 +2,25 @@ use crate::value::Value;
 
 use std::default::Default;
 use std::fmt::Debug;
-
+use std::mem;
 
 #[derive(Debug, Clone, Copy)]
+#[repr(u8)]
 pub enum OpCode {
     Add,
-    Call(u8),
-    Constant(u8),
-    DefineGlobal(u8),
+    Call,
+    Constant,
+    DefineGlobal,
     Divide,
     Equal,
     False,
-    GetGlobal(u8),
-    GetLocal(u8),
+    GetGlobal,
+    GetLocal,
     Greater,
-    Jump(u16),
-    JumpIfFalse(u16),
+    Jump,
+    JumpIfFalse,
     Less,
-    Loop(u16),
+    Loop,
     Multiply,
     Negate,
     Nil,
@@ -27,10 +28,18 @@ pub enum OpCode {
     Pop,
     Print,
     Return,
-    SetGlobal(u8),
-    SetLocal(u8),
+    SetGlobal,
+    SetLocal,
     Subtract,
     True,
+}
+
+impl From<u8> for OpCode {
+    fn from(value: u8) -> Self {
+        unsafe {
+            mem::transmute(value)
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone)]
@@ -55,9 +64,4 @@ impl Chunk {
         self.constants.len() - 1
     }
 
-    pub fn write_constant(&mut self, value: Value, line: usize) -> usize {
-        let index = self.add_constant(value);
-        self.write(OpCode::Constant(index as u8), line);
-        index
-    }
 }

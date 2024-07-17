@@ -125,7 +125,6 @@ impl<'a> Scanner<'a> {
                 } else if is_alpha(ch) {
                     self.identifier()
                 } else {
-                    println!("ue: {}", ch as u8);
                     self.error_token("Unexpected Character")
                 }
             }
