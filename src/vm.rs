@@ -160,7 +160,9 @@ impl VM {
                 Multiply    => bin_op!(*),
                 Divide      => bin_op!(/),
                 Add         =>  {
-                    if let (Value::String(b), Value::String(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
+                    if let Value::String(a) = self.peek(1).clone() {
+                        let b = self.peek(0).clone();
+                        let b = b.to_string();
                         self.pop();
                         self.pop();
                         self.push(Value::String(Rc::new(String::with_capacity(a.len() + b.len()) + &a + &b)));
