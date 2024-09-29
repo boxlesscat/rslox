@@ -9,6 +9,7 @@ use std::mem;
 pub enum OpCode {
     Add,
     Call,
+    Closure,
     Constant,
     DefineGlobal,
     Divide,

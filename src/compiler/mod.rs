@@ -262,7 +262,7 @@ impl<'a> Parser<'a> {
         self.block();
         let function = self.end_compiler();
         let constant = self.make_constant(Value::Function(Rc::new(function)));
-        self.emit_bytes(OpCode::Constant, constant);
+        self.emit_bytes(OpCode::Closure, constant);
     }
 
     fn synchronize(&mut self) {

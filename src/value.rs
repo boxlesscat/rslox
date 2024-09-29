@@ -5,21 +5,16 @@ use std::ops;
 use std::rc::Rc;
 
 
+#[derive(Debug, Clone)]
+pub struct Closure {
+    pub function: Rc<Function>,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Function {
     pub arity:  usize,
     pub name:   String,
     pub chunk:  Chunk
-}
-
-impl Function {
-    pub fn new() -> Self {
-        Self {
-            arity: 0,
-            name: String::new(),
-            chunk: Chunk::default(),
-        }
-    }
 }
 
 pub type Native = fn(u8, &[Value]) -> Result<Value, &str>;
@@ -34,12 +29,31 @@ pub struct NativeFunction {
 #[derive(Clone, Debug, Default)]
 pub enum Value {
     Bool(bool),
+    Closure(Rc<Closure>),
     #[default]
     Nil,
     Number(f64),
     String(Rc<String>),
     Function(Rc<Function>),
     Native(Rc<NativeFunction>),
+}
+
+impl Closure {
+    pub fn new(function: Rc<Function>) -> Self {
+        Self {
+            function
+        }
+    }
+}
+
+impl Function {
+    pub fn new() -> Self {
+        Self {
+            arity: 0,
+            name: String::new(),
+            chunk: Chunk::default(),
+        }
+    }
 }
 
 impl fmt::Display for Value {
@@ -53,6 +67,11 @@ impl fmt::Display for Value {
                 write!(f, "<script>")
             } else {
                 write!(f, "<fn {}>", n.name)
+            }
+            Self::Closure(c)   => if c.function.name.len() == 0 {
+                write!(f, "<script>")
+            } else {
+                write!(f, "<fn {}>", c.function.name)
             }
             Self::Native(n)     => write!(f, "<fn {}>", n.name),
         }   

@@ -1,6 +1,6 @@
 use crate::chunk::OpCode;
 use crate::compiler::Parser;
-use crate::value::{Function, Native, NativeFunction, Value};
+use crate::value::{self, Function, Native, NativeFunction, Value};
 use crate::native::clock::clock;
 use crate::native::sqrt::sqrt;
 
@@ -17,6 +17,7 @@ pub struct CallFrame {
     first_slot: usize,
     function:   Rc<Function>,
     ip:         usize,
+    closure: Rc<value::Closure>,
 }
 
 pub struct VM {
@@ -56,7 +57,10 @@ impl VM {
         let function = result.unwrap();
         let function = Rc::new(function);
         self.push(Value::Function(Rc::clone(&function)));
-        self.call(function, 0);
+        let closure = Rc::new(value::Closure::new(function));
+        self.pop();
+        self.push(Value::Closure(Rc::clone(&closure)));
+        self.call(closure, 0);
         self.run()
     }
 
@@ -89,18 +93,18 @@ impl VM {
 
     fn read_byte(&mut self) -> OpCode {
         self.frame_mut().ip += 1;
-        self.frame().function.chunk.code[self.frame().ip - 1]
+        self.frame().closure.function.chunk.code[self.frame().ip - 1]
     }
 
     fn read_constant(&mut self) -> Value {
         let constant = self.read_byte() as usize;
-        self.frame().function.chunk.constants[constant].clone()
+        self.frame().closure.function.chunk.constants[constant].clone()
     }
 
     fn read_short(&mut self) -> u16 {
         self.frame_mut().ip += 2;
-        ((self.frame().function.chunk.code[self.frame().ip - 2] as u16) << 8) | 
-        ((self.frame().function.chunk.code[self.frame().ip - 1] as u16))
+        ((self.frame().closure.function.chunk.code[self.frame().ip - 2] as u16) << 8) | 
+        ((self.frame().closure.function.chunk.code[self.frame().ip - 1] as u16))
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -114,8 +118,8 @@ impl VM {
                     print!("[ {} ]", self.stack[slot]);
                 }
                 println!();
-                let disassembler = crate::debug::Disassembler::new(&self.frame().function.chunk);
-                disassembler.disassemble_inst(self.frame().ip); //?
+                let disassembler = crate::debug::Disassembler::new(&self.frame().closure.function.chunk);
+                disassembler.disassemble_instruction(self.frame().ip);
             }
             let instruction = self.frame().function.chunk.code[self.frame().ip];
             self.frame_mut().ip += 1;
@@ -258,6 +262,15 @@ impl VM {
                         return InterpretResult::RuntimeError;
                     }
                 }
+                Closure => {
+                    let function = self.read_constant();
+                    if let Value::Function(function) = function {
+                        let closure = value::Closure::new(function);
+                        let closure = Rc::new(closure);
+                        let closure = Value::Closure(closure);
+                        self.push(closure);
+                    };
+                }
                 Return => {
                     let result = self.pop();
                     let slot = self.frame().first_slot;
@@ -279,7 +292,7 @@ impl VM {
 
     fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
         match callee {
-            Value::Function(function)   => self.call(function, arg_count),
+            Value::Closure(closure)   => self.call(closure, arg_count),
             Value::Native(native)       => {
                 let res = (native.function)(arg_count, &self.stack[self.stack_top - arg_count as usize..self.stack_top]);
                 self.stack_top -= arg_count as usize + 1;
@@ -310,16 +323,17 @@ impl VM {
         self.globals.insert(name.to_string(), Value::Native(Rc::new(function)));
     }
 
-    fn call(&mut self, function: Rc<Function>, arg_count: u8) -> bool {
-        if arg_count as usize != function.arity {
-            self.runtime_error(&format!("Expected {} arguments but got {}", function.arity, arg_count));
+    fn call(&mut self, closure: Rc<value::Closure>, arg_count: u8) -> bool {
+        if arg_count as usize != closure.function.arity {
+            self.runtime_error(&format!("Expected {} arguments but got {}", closure.function.arity, arg_count));
             return false;
         }
         let stack_top = self.stack_top;
         self.frames.push(CallFrame {
-            function,
+            function: Rc::clone(&closure.function),
             ip: 0,
             first_slot: stack_top - arg_count as usize - 1,
+            closure,
         });
         true
     }
@@ -337,7 +351,7 @@ impl VM {
     fn runtime_error(&mut self, message: &str) {
         eprintln!("{message}");
         for frame in self.frames.iter().rev() {
-            let function = &frame.function;
+            let function = &frame.closure.function;
             eprint!("[line {}] in ", function.chunk.lines[frame.ip - 1]);
             if function.name.is_empty() {
                 eprintln!("script");
