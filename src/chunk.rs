@@ -9,6 +9,7 @@ use std::mem;
 pub enum OpCode {
     Add,
     Call,
+    CloseUpvalue,
     Closure,
     Constant,
     DefineGlobal,
@@ -17,6 +18,7 @@ pub enum OpCode {
     False,
     GetGlobal,
     GetLocal,
+    GetUpvalue,
     Greater,
     Jump,
     JumpIfFalse,
@@ -31,6 +33,7 @@ pub enum OpCode {
     Return,
     SetGlobal,
     SetLocal,
+    SetUpvalue,
     Subtract,
     True,
 }

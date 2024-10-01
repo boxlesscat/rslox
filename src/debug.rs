@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, OpCode};
+use crate::{chunk::{Chunk, OpCode}, value::Value};
 
 pub struct Disassembler<'a> {
     chunk: &'a Chunk,
@@ -88,8 +88,24 @@ impl<'a> Disassembler<'a> {
                 let constant = self.chunk.code[offset] as usize;
                 offset += 1;
                 println!("{:<16} {:>4} {}", "CLOSURE", constant, self.chunk.constants[constant]);
+                
+                if let Value::Function(function) = self.chunk.constants[constant].clone() {
+                    for _ in 0..function.upvalue_count {
+                        let is_local = self.chunk.code[offset];
+                        offset += 1;
+                        let index = self.chunk.code[offset];
+                        offset += 1;
+                        println!("{:04}    |                       {} {}", offset - 2, if is_local as u8 != 0 {"local"} else {"upvalue"}, index as u8)
+                    }
+                }
+
                 offset
             }
+
+            OpCode::CloseUpvalue    => self.simple_instruction("CLOSE UPVALUE", offset),
+
+            OpCode::GetUpvalue      => self.byte_instruction("GET UPVALUE", offset),
+            OpCode::SetUpvalue      => self.byte_instruction("GET SETVALUE", offset),
 
             OpCode::Return          => self.simple_instruction("RETURN", offset),
             #[allow(unreachable_patterns)]

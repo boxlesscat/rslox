@@ -1,5 +1,6 @@
 use crate::chunk::Chunk;
 
+use std::cell::RefCell;
 use std::fmt;
 use std::ops;
 use std::rc::Rc;
@@ -8,13 +9,21 @@ use std::rc::Rc;
 #[derive(Debug, Clone)]
 pub struct Closure {
     pub function: Rc<Function>,
+    pub upvalues: Vec<Rc<RefCell<Upvalue>>>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Upvalue {
+    pub location: usize,
+    pub closed: Option<Value>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct Function {
     pub arity:  usize,
     pub name:   String,
-    pub chunk:  Chunk
+    pub chunk:  Chunk,
+    pub upvalue_count: usize,
 }
 
 pub type Native = fn(u8, &[Value]) -> Result<Value, &str>;
@@ -29,19 +38,21 @@ pub struct NativeFunction {
 #[derive(Clone, Debug, Default)]
 pub enum Value {
     Bool(bool),
-    Closure(Rc<Closure>),
+    Closure(Rc<RefCell<Closure>>),
     #[default]
     Nil,
     Number(f64),
     String(Rc<String>),
     Function(Rc<Function>),
     Native(Rc<NativeFunction>),
+    Upvalue(Rc<RefCell<Upvalue>>),
 }
 
 impl Closure {
     pub fn new(function: Rc<Function>) -> Self {
         Self {
-            function
+            upvalues: Vec::with_capacity(function.upvalue_count),
+            function,
         }
     }
 }
@@ -52,6 +63,16 @@ impl Function {
             arity: 0,
             name: String::new(),
             chunk: Chunk::default(),
+            upvalue_count: 0,
+        }
+    }
+}
+
+impl  Upvalue {
+    pub fn new(slot: usize) -> Self {
+        Self {
+            location: slot,
+            closed: None,
         }
     }
 }
@@ -68,13 +89,17 @@ impl fmt::Display for Value {
             } else {
                 write!(f, "<fn {}>", n.name)
             }
-            Self::Closure(c)   => if c.function.name.len() == 0 {
+            Self::Closure(c)   => if c.borrow().function.name.len() == 0 {
                 write!(f, "<script>")
             } else {
-                write!(f, "<fn {}>", c.function.name)
+                write!(f, "<fn {}>", c.borrow().function.name)
             }
             Self::Native(n)     => write!(f, "<fn {}>", n.name),
-        }   
+            Self::Upvalue(u) => match &u.borrow().closed {
+                Some(value) => write!(f, "{}", value),
+                None => write!(f, "<closed>"),
+            },
+        }
     }
 }
 

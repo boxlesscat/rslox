@@ -1,9 +1,10 @@
 use crate::chunk::OpCode;
 use crate::compiler::Parser;
-use crate::value::{self, Function, Native, NativeFunction, Value};
+use crate::value::{self, Function, Native, NativeFunction, Upvalue, Value};
 use crate::native::clock::clock;
 use crate::native::sqrt::sqrt;
 
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::mem;
 use std::rc::Rc;
@@ -17,7 +18,7 @@ pub struct CallFrame {
     first_slot: usize,
     function:   Rc<Function>,
     ip:         usize,
-    closure: Rc<value::Closure>,
+    closure:    Rc<RefCell<value::Closure>>,
 }
 
 pub struct VM {
@@ -25,6 +26,7 @@ pub struct VM {
     globals:        HashMap<String, Value>,
     stack:          [Value; STACK_MAX],
     stack_top:      usize,
+    open_upvalues:  Vec<Rc<RefCell<Upvalue>>>,
 }
 
 pub enum InterpretResult {
@@ -42,6 +44,7 @@ impl VM {
                 mem::zeroed() // mem::MaybeUninit::uninit().assume_init() gives seg fault with the build release executable but not with dev executable
             },
             stack_top: 0,
+            open_upvalues: Vec::new(),
         };
         vm.define_native(0, "clock", clock);
         vm.define_native(1, "sqrt", sqrt);
@@ -55,9 +58,8 @@ impl VM {
             return InterpretResult::CompileError;
         }
         let function = result.unwrap();
-        let function = Rc::new(function);
         self.push(Value::Function(Rc::clone(&function)));
-        let closure = Rc::new(value::Closure::new(function));
+        let closure = Rc::new(RefCell::new(value::Closure::new(function)));
         self.pop();
         self.push(Value::Closure(Rc::clone(&closure)));
         self.call(closure, 0);
@@ -70,6 +72,10 @@ impl VM {
 
     fn frame_mut(&mut self) -> &mut CallFrame {
         self.frames.last_mut().unwrap()
+    }
+
+    fn closure(&self) -> Ref<value::Closure> {
+        self.frame().closure.borrow()
     }
 
     fn push(&mut self, value: Value) {
@@ -88,23 +94,24 @@ impl VM {
 
     fn reset_stack(&mut self) {
         self.stack_top = 0;
+        self.open_upvalues.clear();
         self.frames.clear();
     }
 
     fn read_byte(&mut self) -> OpCode {
         self.frame_mut().ip += 1;
-        self.frame().closure.function.chunk.code[self.frame().ip - 1]
+        self.closure().function.chunk.code[self.frame().ip - 1]
     }
 
     fn read_constant(&mut self) -> Value {
         let constant = self.read_byte() as usize;
-        self.frame().closure.function.chunk.constants[constant].clone()
+        self.closure().function.chunk.constants[constant].clone()
     }
 
     fn read_short(&mut self) -> u16 {
         self.frame_mut().ip += 2;
-        ((self.frame().closure.function.chunk.code[self.frame().ip - 2] as u16) << 8) | 
-        ((self.frame().closure.function.chunk.code[self.frame().ip - 1] as u16))
+        ((self.closure().function.chunk.code[self.frame().ip - 2] as u16) << 8) | 
+        ((self.closure().function.chunk.code[self.frame().ip - 1] as u16))
     }
 
     fn run(&mut self) -> InterpretResult {
@@ -118,7 +125,8 @@ impl VM {
                     print!("[ {} ]", self.stack[slot]);
                 }
                 println!();
-                let disassembler = crate::debug::Disassembler::new(&self.frame().closure.function.chunk);
+                let closure = self.closure();
+                let disassembler = crate::debug::Disassembler::new(&closure.function.chunk);
                 disassembler.disassemble_instruction(self.frame().ip);
             }
             let instruction = self.frame().function.chunk.code[self.frame().ip];
@@ -267,15 +275,53 @@ impl VM {
                 Closure => {
                     let function = self.read_constant();
                     if let Value::Function(function) = function {
+                        let upvalue_count = function.upvalue_count;
                         let closure = value::Closure::new(function);
+                        let closure = RefCell::new(closure);
                         let closure = Rc::new(closure);
-                        let closure = Value::Closure(closure);
-                        self.push(closure);
+                        self.push(Value::Closure(Rc::clone(&closure)));
+                        for _ in 0..upvalue_count {
+                            let is_local = self.read_byte() as u8;
+                            let index = self.read_byte() as usize;
+                            if is_local != 0 {
+                                closure.borrow_mut().upvalues.push(self.capture_upvalue(self.frame().first_slot + index));
+                            } else {
+                                closure.borrow_mut().upvalues.push(self.closure().upvalues[index].clone());
+                            }
+                        }
                     };
+                }
+                GetUpvalue => {
+                    let slot = self.read_byte() as usize;
+                    let upvalue = self.frame().closure.borrow().upvalues[slot].clone();
+                    if upvalue.borrow().closed.is_some() {
+                        self.push(Value::Upvalue(upvalue));
+                    } else {
+                        if let Some(closed) = upvalue.borrow().closed.clone() {
+                            self.push(closed);
+                        } else {
+                            self.push(self.stack[upvalue.borrow().location].clone());
+                        }
+                    }
+                }
+                SetUpvalue => {
+                    let slot = self.read_byte() as usize;
+                    let location = self.closure().upvalues[slot].borrow().location;
+                    let value = self.peek(0).clone();
+                    if self.closure().upvalues[slot].borrow().closed.is_some() {
+                        self.closure().upvalues[slot].borrow_mut().closed = Some(value);                        
+                    } else {
+                        self.stack[location] = value;
+                    }
+                }
+                CloseUpvalue => {
+                    self.close_upvalues(self.stack_top - 1);
+                    self.pop();
                 }
                 Return => {
                     let result = self.pop();
                     let slot = self.frame().first_slot;
+                    self.close_upvalues(slot);
                     self.frames.pop();
                     if self.frames.is_empty() {
                         self.pop();
@@ -288,6 +334,35 @@ impl VM {
                     self.pop();
                 },
                 Print => println!("{}", self.pop()),
+            }
+        }
+    }
+
+    fn capture_upvalue(&mut self, local: usize) -> Rc<RefCell<Upvalue>> {
+        for upvalue in &self.open_upvalues {
+            if upvalue.borrow().location == local {
+                return Rc::clone(&upvalue);
+            }
+        }
+        let created_upvalue = Upvalue::new(local);
+        let created_upvalue = Rc::new(RefCell::new(created_upvalue));
+        self.open_upvalues.push(Rc::clone(&created_upvalue));
+        created_upvalue
+    }
+    
+    fn close_upvalues(&mut self, last: usize) {
+        let mut i = 0;
+        while i < self.open_upvalues.len() {
+            let upvalue = &mut self.open_upvalues[i];
+            if upvalue.borrow().location >= last {
+                let value = Some(self.stack[upvalue.borrow().location].clone());
+                upvalue.borrow_mut().closed = value;
+                let last_upvalue = self.open_upvalues.pop();
+                if i != self.open_upvalues.len() {
+                    self.open_upvalues[i] = last_upvalue.unwrap();
+                }
+            } else {
+                i += 1;
             }
         }
     }
@@ -325,14 +400,15 @@ impl VM {
         self.globals.insert(name.to_string(), Value::Native(Rc::new(function)));
     }
 
-    fn call(&mut self, closure: Rc<value::Closure>, arg_count: u8) -> bool {
-        if arg_count as usize != closure.function.arity {
-            self.runtime_error(&format!("Expected {} arguments but got {}", closure.function.arity, arg_count));
+    fn call(&mut self, closure: Rc<RefCell<value::Closure>>, arg_count: u8) -> bool {
+        if arg_count as usize != closure.borrow().function.arity {
+            self.runtime_error(&format!("Expected {} arguments but got {}", closure.borrow().function.arity, arg_count));
             return false;
         }
         let stack_top = self.stack_top;
+        let function = Rc::clone(&closure.borrow().function);
         self.frames.push(CallFrame {
-            function: Rc::clone(&closure.function),
+            function,
             ip: 0,
             first_slot: stack_top - arg_count as usize - 1,
             closure,
@@ -353,7 +429,7 @@ impl VM {
     fn runtime_error(&mut self, message: &str) {
         eprintln!("{message}");
         for frame in self.frames.iter().rev() {
-            let function = &frame.closure.function;
+            let function = &frame.closure.borrow().function;
             eprint!("[line {}] in ", function.chunk.lines[frame.ip - 1]);
             if function.name.is_empty() {
                 eprintln!("script");
