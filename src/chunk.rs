@@ -46,9 +46,17 @@ impl From<u8> for OpCode {
     }
 }
 
+impl From<OpCode> for u8 {
+    fn from(value: OpCode) -> Self {
+        unsafe {
+            mem::transmute(value)
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone)]
 pub struct Chunk {
-    pub code:       Vec<OpCode>,
+    pub code:       Vec<u8>,
     pub constants:  Vec<Value>,
     pub lines:      Vec<usize>,
 }
@@ -58,8 +66,8 @@ impl Chunk {
         Self::default()
     }
 
-    pub fn write<T: Into<OpCode>>(&mut self, op_code: T, line: usize) {
-        self.code.push(op_code.into());
+    pub fn write<T: Into<u8>>(&mut self, value: T, line: usize) {
+        self.code.push(value.into());
         self.lines.push(line);
     }
 

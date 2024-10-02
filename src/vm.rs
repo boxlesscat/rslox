@@ -89,7 +89,7 @@ impl VM {
 
     fn read_byte(&mut self) -> OpCode {
         self.frame_mut().ip += 1;
-        self.closure().function.chunk.code[self.frame().ip - 1]
+        self.closure().function.chunk.code[self.frame().ip - 1].into()
     }
 
     fn read_constant(&mut self) -> Value {
@@ -118,7 +118,7 @@ impl VM {
                 let disassembler = crate::debug::Disassembler::new(&closure.function.chunk);
                 disassembler.disassemble_instruction(self.frame().ip);
             }
-            let instruction = self.frame().function.chunk.code[self.frame().ip];
+            let instruction = self.frame().function.chunk.code[self.frame().ip].into();
             self.frame_mut().ip += 1;
 
 

@@ -419,7 +419,7 @@ impl<'a> Parser<'a> {
         self.patch_jump(else_jump);
     }
 
-    fn emit_jump<T: Into<OpCode>>(&mut self, instruction: T) -> usize {
+    fn emit_jump<T: Into<u8>>(&mut self, instruction: T) -> usize {
         self.emit_byte(instruction);
         self.emit_byte(0xff);
         self.emit_byte(0xff);
@@ -544,11 +544,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn emit_byte<T: Into<OpCode>>(&mut self, byte: T) {
+    fn emit_byte<T: Into<u8>>(&mut self, byte: T) {
         self.compiler.function.chunk.write(byte, self.previous.line);
     }
 
-    fn emit_bytes<T: Into<OpCode>, U: Into<OpCode>>(&mut self, byte1: T, byte2: U) {
+    fn emit_bytes<T: Into<u8>, U: Into<u8>>(&mut self, byte1: T, byte2: U) {
         self.emit_byte(byte1);
         self.emit_byte(byte2);
     }

@@ -49,7 +49,7 @@ impl<'a> Disassembler<'a> {
         } else {
             print!("{:>4} ", self.chunk.lines[offset]);
         }
-        let instruction = self.chunk.code[offset];
+        let instruction = self.chunk.code[offset].into();
         match instruction {
             OpCode::Constant        => self.constant_instruction("CONSTANT", offset),
             
