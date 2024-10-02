@@ -6,27 +6,21 @@ use crate::native::sqrt::sqrt;
 
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
-use std::mem;
 use std::rc::Rc;
 
 
-const U8_COUNT:     usize = u8::MAX as usize + 1;
-const FRAMES_MAX:   usize = 32;
-const STACK_MAX:    usize = FRAMES_MAX * U8_COUNT;
-
 pub struct CallFrame {
     first_slot: usize,
-    function:   Rc<Function>,
     ip:         usize,
+    function:   Rc<Function>,
     closure:    Rc<RefCell<value::Closure>>,
 }
 
 pub struct VM {
     frames:         Vec<CallFrame>,
-    globals:        HashMap<String, Value>,
-    stack:          [Value; STACK_MAX],
-    stack_top:      usize,
+    stack:          Vec<Value>,
     open_upvalues:  Vec<Rc<RefCell<Upvalue>>>,
+    globals:        HashMap<String, Value>,
 }
 
 pub enum InterpretResult {
@@ -38,13 +32,10 @@ pub enum InterpretResult {
 impl VM {
     pub fn new() -> Self {
         let mut vm = Self {
-            frames: Vec::new(),
-            globals: HashMap::new(),
-            stack: unsafe {
-                mem::zeroed() // mem::MaybeUninit::uninit().assume_init() gives seg fault with the build release executable but not with dev executable
-            },
-            stack_top: 0,
-            open_upvalues: Vec::new(),
+            frames:         Vec::new(),
+            stack:          Vec::new(), 
+            open_upvalues:  Vec::new(),
+            globals:        HashMap::new(),
         };
         vm.define_native(0, "clock", clock);
         vm.define_native(1, "sqrt", sqrt);
@@ -79,21 +70,19 @@ impl VM {
     }
 
     fn push(&mut self, value: Value) {
-        self.stack[self.stack_top] = value;
-        self.stack_top += 1;
+        self.stack.push(value);
     }
 
     fn pop(&mut self) -> Value {
-        self.stack_top -= 1;
-        mem::take(&mut self.stack[self.stack_top])
+        self.stack.pop().unwrap()
     }
 
     fn peek(&self, distance: usize) -> &Value {
-        &self.stack[self.stack_top - 1 - distance] 
+        &self.stack[self.stack.len() - 1 - distance] 
     }
 
     fn reset_stack(&mut self) {
-        self.stack_top = 0;
+        self.stack.clear();
         self.open_upvalues.clear();
         self.frames.clear();
     }
@@ -121,8 +110,8 @@ impl VM {
             #[cfg(feature = "debug_trace_execution")]
             {
                 print!("          ");
-                for slot in 0..self.stack_top {
-                    print!("[ {} ]", self.stack[slot]);
+                for value in self.stack.iter() {
+                    print!("[ {value} ]");
                 }
                 println!();
                 let closure = self.closure();
@@ -247,8 +236,9 @@ impl VM {
                     self.push(self.stack[self.frame().first_slot + slot as usize].clone())
                 }
                 SetLocal        => {
-                    let slot = self.read_byte();
-                    self.stack[self.frame_mut().first_slot + slot as usize] = self.peek(0).clone();
+                    let mut slot = self.read_byte() as usize;
+                    slot += self.frame_mut().first_slot;
+                    self.stack[slot] = self.peek(0).clone();
                 }
 
                 Jump            => {
@@ -265,7 +255,6 @@ impl VM {
                     let offset = self.read_short();
                     self.frame_mut().ip -= offset as usize
                 }, 
-                
                 Call            => {
                     let arg_count = self.read_byte() as u8;
                     if !self.call_value(self.peek(arg_count as usize).clone(), arg_count) {
@@ -315,7 +304,7 @@ impl VM {
                     }
                 }
                 CloseUpvalue => {
-                    self.close_upvalues(self.stack_top - 1);
+                    self.close_upvalues(self.stack.len() - 1);
                     self.pop();
                 }
                 Return => {
@@ -327,7 +316,7 @@ impl VM {
                         self.pop();
                         return InterpretResult::Ok;
                     }
-                    self.stack_top = slot;
+                    self.stack.truncate(slot);
                     self.push(result);
                 },
                 Pop => {
@@ -371,8 +360,9 @@ impl VM {
         match callee {
             Value::Closure(closure)   => self.call(closure, arg_count),
             Value::Native(native)       => {
-                let res = (native.function)(arg_count, &self.stack[self.stack_top - arg_count as usize..self.stack_top]);
-                self.stack_top -= arg_count as usize + 1;
+                let res = (native.function)(arg_count, &self.stack[self.stack.len() - arg_count as usize..self.stack.len()]);
+                let len = self.stack.len() - arg_count as usize - 1;
+                self.stack.truncate(len);
                 match res {
                     Err(message) => {
                         self.runtime_error(&message.to_string());
@@ -405,12 +395,11 @@ impl VM {
             self.runtime_error(&format!("Expected {} arguments but got {}", closure.borrow().function.arity, arg_count));
             return false;
         }
-        let stack_top = self.stack_top;
         let function = Rc::clone(&closure.borrow().function);
         self.frames.push(CallFrame {
             function,
             ip: 0,
-            first_slot: stack_top - arg_count as usize - 1,
+            first_slot: self.stack.len() - arg_count as usize - 1,
             closure,
         });
         true

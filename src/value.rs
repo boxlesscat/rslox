@@ -26,7 +26,7 @@ pub struct Function {
     pub upvalue_count: usize,
 }
 
-pub type Native = fn(u8, &[Value]) -> Result<Value, &str>;
+pub type Native = fn(u8, &[Value]) -> Result<Value, String>;
 
 #[derive(Debug, Clone)]
 pub struct NativeFunction {
