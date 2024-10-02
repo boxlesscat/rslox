@@ -266,7 +266,7 @@ impl<'a> Parser<'a> {
     }
 
     fn idenitifier_constant(&mut self, token: Token) -> u8 {
-        self.make_constant(Value::String(Rc::new(token.value.to_string())))
+        self.make_constant(Value::from(token.value.to_string()))
     }
 
     fn define_variable(&mut self, global: u8) {
@@ -573,7 +573,7 @@ impl<'a> Parser<'a> {
         if let Some(enclosing) = self.compiler.enclosing.take() {
             let compiler = mem::replace(&mut self.compiler, enclosing);
             if from_function {
-                let constant = self.make_constant(Value::Function(Rc::clone(&function)));
+                let constant = self.make_constant(Value::from(&function));
                 self.emit_bytes(OpCode::Closure, constant);
                 for upvalue in compiler.upvalues.iter() {
                     self.emit_byte(if upvalue.is_local { 1 } else { 0 });
@@ -636,7 +636,7 @@ impl<'a> Parser<'a> {
     }
 
     fn number(&mut self, _can_assign: bool) {
-        let value = Value::Number(self.previous.value.parse().unwrap());
+        let value = Value::from(self.previous.value.parse::<f64>().unwrap());
         self.emit_constant(value);
     }
 
@@ -704,7 +704,7 @@ impl<'a> Parser<'a> {
 
     fn string(&mut self, _can_assign: bool) {
         let s = String::from(self.previous.value);
-        self.emit_constant(Value::String(Rc::new(s[1..s.len() - 1].to_string())));
+        self.emit_constant(Value::from(s[1..s.len() - 1].to_string()));
     }
 
     fn emit_constant(&mut self, value: Value) {

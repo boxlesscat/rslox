@@ -124,3 +124,45 @@ impl ops::Neg for Value {
         }
     }
 }
+
+impl From<bool> for Value {
+    fn from(value: bool) -> Self {
+        Self::Bool(value)
+    }
+}
+
+impl From<&Rc<RefCell<Closure>>> for Value {
+    fn from(value: &Rc<RefCell<Closure>>) -> Self {
+        Self::Closure(Rc::clone(&value))
+    }
+}
+
+impl From<&Rc<Function>> for Value {
+    fn from(value: &Rc<Function>) -> Self {
+        Self::Function(Rc::clone(&value))
+    }
+}
+
+impl From<NativeFunction> for Value {
+    fn from(value: NativeFunction) -> Self {
+        Self::Native(Rc::new(value))
+    }
+}
+
+impl From<f64> for Value {
+    fn from(value: f64) -> Self {
+        Self::Number(value)
+    }
+}
+
+impl From<String> for Value {
+    fn from(value: String) -> Self {
+        Self::String(Rc::new(value))
+    }
+}
+
+impl From<Rc<RefCell<Upvalue>>> for Value {
+    fn from(value: Rc<RefCell<Upvalue>>) -> Self {
+        Self::Upvalue(value)
+    }
+}

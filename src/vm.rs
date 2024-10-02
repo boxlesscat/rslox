@@ -49,10 +49,10 @@ impl VM {
             return InterpretResult::CompileError;
         }
         let function = result.unwrap();
-        self.push(Value::Function(Rc::clone(&function)));
+        self.push(Value::from(&function));
         let closure = Rc::new(RefCell::new(value::Closure::new(function)));
         self.pop();
-        self.push(Value::Closure(Rc::clone(&closure)));
+        self.push(Value::from(&closure));
         self.call(closure, 0);
         self.run()
     }
@@ -127,7 +127,7 @@ impl VM {
                     if let (Value::Number(b), Value::Number(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
                         self.pop();
                         self.pop();
-                        self.push(Value::Number(a $op b));
+                        self.push(Value::from(a $op b));
                     } else {
                         self.runtime_error("Operands must be numbers");
                         return RuntimeError;
@@ -139,11 +139,11 @@ impl VM {
                     if let (Value::Number(b), Value::Number(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
                         self.pop();
                         self.pop();
-                        self.push(Value::Bool(a $op b));
+                        self.push(Value::from(a $op b));
                     } else if let (Value::String(b), Value::String(a)) = (self.peek(0).clone(), self.peek(1).clone()) {
                         self.pop();
                         self.pop();
-                        self.push(Value::Bool(a $op b));
+                        self.push(Value::from(a $op b));
                     } else {
                         self.runtime_error("Operands must be numbers");
                         return RuntimeError;
@@ -162,14 +162,14 @@ impl VM {
                         let b = b.to_string();
                         self.pop();
                         self.pop();
-                        self.push(Value::String(Rc::new(String::with_capacity(a.len() + b.len()) + &a + &b)));
+                        self.push(Value::from(String::with_capacity(a.len() + b.len()) + &a + &b));
                     } else {
                         bin_op!(+)
                     }
                 }
                 
-                True        => self.push(Value::Bool(true)),
-                False       => self.push(Value::Bool(false)),
+                True        => self.push(Value::from(true)),
+                False       => self.push(Value::from(false)),
                 Nil         => self.push(Value::Nil),
                 
                 Greater     => cmp_op!(>),
@@ -177,7 +177,7 @@ impl VM {
                 Equal       => {
                     let b = self.pop();
                     let a = self.pop();
-                    self.push(Value::Bool(a == b));
+                    self.push(Value::from(a == b));
                 }
 
                 Constant => {
@@ -196,7 +196,7 @@ impl VM {
                 Not => {
                     let value = self.pop();
                     let value = self.is_falsey(value);
-                    self.push(Value::Bool(value));
+                    self.push(Value::from(value));
                 },
 
                 DefineGlobal => {
@@ -268,7 +268,7 @@ impl VM {
                         let closure = value::Closure::new(function);
                         let closure = RefCell::new(closure);
                         let closure = Rc::new(closure);
-                        self.push(Value::Closure(Rc::clone(&closure)));
+                        self.push(Value::from(&closure));
                         for _ in 0..upvalue_count {
                             let is_local = self.read_byte() as u8;
                             let index = self.read_byte() as usize;
@@ -284,7 +284,7 @@ impl VM {
                     let slot = self.read_byte() as usize;
                     let upvalue = self.frame().closure.borrow().upvalues[slot].clone();
                     if upvalue.borrow().closed.is_some() {
-                        self.push(Value::Upvalue(upvalue));
+                        self.push(Value::from(upvalue));
                     } else {
                         if let Some(closed) = upvalue.borrow().closed.clone() {
                             self.push(closed);
@@ -387,7 +387,7 @@ impl VM {
             function: native,
             name: Rc::new(name.to_string()),
         };
-        self.globals.insert(name.to_string(), Value::Native(Rc::new(function)));
+        self.globals.insert(name.to_string(), Value::from(function));
     }
 
     fn call(&mut self, closure: Rc<RefCell<value::Closure>>, arg_count: u8) -> bool {
@@ -407,7 +407,7 @@ impl VM {
 
     fn is_falsey(&self, value: Value) -> bool {
         match value {
-            Value::Nil => true,
+            Value::Nil          => true,
             Value::Bool(bool)   => !bool,
             Value::Number(n)    =>  n == 0.0,
             Value::String(s)    =>  s.len() == 0,
