@@ -12,8 +12,6 @@ use std::rc::Rc;
 mod rules;
 
 
-const U8_COUNT: usize = u8::MAX as usize + 1;
-
 #[derive(Default)]
 enum FunctionType {
     #[default]
@@ -24,40 +22,35 @@ enum FunctionType {
 struct Compiler <'a> {
     enclosing:      Option<Box<Compiler<'a>>>,
     function:       Function,
-    #[allow(dead_code)]
     function_type:  FunctionType,
-    locals:         [Local<'a>; U8_COUNT],
-    local_count:    usize,
+    locals:         Vec<Local<'a>>,
     scope_depth:    i32,
-    upvalues:       [Upvalue; U8_COUNT]
+    upvalues:       Vec<Upvalue>,
 }
 
 impl <'a> Compiler<'a> {
     fn new(function_type: FunctionType) -> Self {
-        let mut compiler = Self {
+        let this_token = Token {
+            value: "this",
+            ..Default::default()
+        };
+        let local = Local {
+            depth: 0,
+            name: this_token,
+            is_captured: false,
+        };
+        Self {
             enclosing: None,
             function: Function::new(),
             function_type,
-            locals: unsafe {
-                #[allow(invalid_value)]
-                mem::MaybeUninit::uninit().assume_init()
-            },
-            local_count: 0,
+            locals: vec![local],
             scope_depth: 0,
-            upvalues: [Upvalue::default(); 256]
-        };
-        let local = &mut compiler.locals[0];
-        compiler.local_count += 1;
-        local.depth = 0;
-        local.name = Token::default();
-        local.name.value = "this";
-        local.is_captured = false;
-        compiler
+            upvalues: Vec::new(),
+        }
     }
     
     fn resolve_local(&mut self, name: &Token) -> Result<i32, &'static str> {
-        for i in (0..self.local_count).rev() {
-            let local = &self.locals[i as usize];
+        for (i, local) in self.locals.iter().enumerate().rev() {
             if local.name.value == name.value {
                 if local.depth == -1 {
                     return Err("Can't read local variable in its own initializer.");
@@ -85,20 +78,17 @@ impl <'a> Compiler<'a> {
     }
 
     fn add_upvalue(&mut self, index: u8, is_local: bool) -> Result<i32, &'static str> {
-        let upvalue_count = self.function.upvalue_count;
-        for i in 0..upvalue_count {
-            let upvalue = &self.upvalues[i];
+        for (i, upvalue) in self.upvalues.iter().enumerate() {
             if upvalue.index == index && upvalue.is_local == is_local {
                 return Ok(i as i32);
             }
         }
-        if upvalue_count == U8_COUNT {
-            return Err("Too many closures variables in function.")
-        }
-        self.upvalues[upvalue_count].is_local = is_local;
-        self.upvalues[upvalue_count].index = index;
-        self.function.upvalue_count += 1;
-        Ok(upvalue_count as i32)
+        let upvalue = Upvalue {
+            is_local, index
+        };
+        self.upvalues.push(upvalue);
+        self.function.upvalue_count = self.upvalues.len();
+        Ok((self.upvalues.len() - 1) as i32)
     }
 
 }
@@ -254,29 +244,25 @@ impl<'a> Parser<'a> {
             return;
         }
         let name = self.previous.clone();
-        for i in (0..self.compiler.local_count).rev() {
-            let local = &self.compiler.locals[i];
+        for local in self.compiler.locals.iter().rev() {
             if local.depth != -1 && local.depth < self.compiler.scope_depth {
                 break;
             }
             if name.value == local.name.value {
                 self.error("A variable with this name in this scope already exists.");
+                break; // After an error is reported, we don't need to check anymore.
             }
         }
         self.add_local(name);
     }
 
     fn add_local(&mut self, name: Token<'a>) {
-        if self.compiler.local_count == U8_COUNT {
-            self.error("Too many local variables in function.");
-            return;
-        }
-        self.compiler.locals[self.compiler.local_count] = Local {
+        let local = Local {
             name,
             depth: -1,
             is_captured: false,
         };
-        self.compiler.local_count += 1;
+        self.compiler.locals.push(local);
     }
 
     fn idenitifier_constant(&mut self, token: Token) -> u8 {
@@ -295,7 +281,7 @@ impl<'a> Parser<'a> {
         if self.compiler.scope_depth == 0 {
             return;
         }
-        self.compiler.locals[self.compiler.local_count - 1].depth = self.compiler.scope_depth;
+        self.compiler.locals.last_mut().unwrap().depth = self.compiler.scope_depth;
     }
 
     fn function(&mut self, function_type: FunctionType) {
@@ -455,13 +441,17 @@ impl<'a> Parser<'a> {
 
     fn end_scope(&mut self) {
         self.compiler.scope_depth -= 1;
-        while self.compiler.local_count > 0 && self.compiler.locals[self.compiler.local_count - 1].depth > self.compiler.scope_depth {
-            if self.compiler.locals[self.compiler.local_count - 1].is_captured {
-                self.emit_byte(OpCode::CloseUpvalue);
+        while let Some(local) = self.compiler.locals.last() {
+            if local.depth > self.compiler.scope_depth {
+                if local.is_captured {
+                    self.emit_byte(OpCode::CloseUpvalue);
+                } else {
+                    self.emit_byte(OpCode::Pop);
+                }
+                self.compiler.locals.pop();
             } else {
-                self.emit_byte(OpCode::Pop);
+                break;
             }
-            self.compiler.local_count -= 1;
         }
     }
 
@@ -525,7 +515,7 @@ impl<'a> Parser<'a> {
         self.error_at(self.current.clone(), message);
     }
 
-    fn error(&mut self, message: &str) {
+    fn error(&mut self, message: &'static str) {
         self.error_at(self.previous.clone(), message);
     }
 
@@ -585,9 +575,9 @@ impl<'a> Parser<'a> {
             if from_function {
                 let constant = self.make_constant(Value::Function(Rc::clone(&function)));
                 self.emit_bytes(OpCode::Closure, constant);
-                for i in 0..function.upvalue_count {
-                    self.emit_byte(if compiler.upvalues[i].is_local { 1 } else { 0 });
-                    self.emit_byte(compiler.upvalues[i].index);
+                for upvalue in compiler.upvalues.iter() {
+                    self.emit_byte(if upvalue.is_local { 1 } else { 0 });
+                    self.emit_byte(upvalue.index);
                 }
             }
         }
@@ -640,8 +630,6 @@ impl<'a> Parser<'a> {
             self.emit_bytes(get_op, arg as u8);
         }
     }
-
-    
 
     fn expression(&mut self) {
         self.parse_precendence(Precedence::Assignment);
